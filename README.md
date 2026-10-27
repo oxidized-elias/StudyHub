@@ -78,4 +78,12 @@ npm install --no-save --package-lock=false typescript@5.8.3 marked@12.0.2 katex@
 npm run test:ui
 ```
 
+## Credits
+* [Google](https://google.com) for creating NotebookLM
+* [oxidized-elias](https://github.com/oxidized-elias) for creating StudyHub _idea_
+* [Magnific - flaticon](https://www.flaticon.com/free-icons/education" title="education icons) for the icon
+* [Claude Sonnet 5](claude.ai) "Programmer"
+* [GPT-6.1-Sol](chatgpt.com) "Lead" Programmer
+
+
 Alternatively supply existing modules with `TYPESCRIPT_RUNTIME`, `MARKED_RUNTIME`, and `KATEX_RUNTIME`. After a debug build, `python3 tests/suite_smoke.py` tests complete workflows with temporary data and a fake model; it requires local socket access. See [development](docs/DEVELOPMENT.md) for verification boundaries.
