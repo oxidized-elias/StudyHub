@@ -11,6 +11,7 @@ JSON requests use `Content-Type: application/json`. Successful handlers return J
 | Method | Path | Result |
 | --- | --- | --- |
 | GET | `/` | Unified HTML workspace. |
+| GET | `/logo.png` | Bundled StudyHub logo (`image/png`). |
 | GET | `/api/health` | `service`, `ok`, `unified`, `notes`, `learning`. A responding unified server has both initialized modules. |
 | GET | `/notes/`, `/learn/` | Redirect to each module root. |
 
