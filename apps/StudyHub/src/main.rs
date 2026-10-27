@@ -103,6 +103,7 @@ fn router(notes: Router, learning: Router, authorization: Option<String>, epoch:
     let learning = learning.layer(from_fn(|req, next| embedded(req, next, "/learn")));
     Router::new()
         .route("/", get(move || { let html = html.clone(); async move { Html(html) } }))
+        .route("/logo.png", get(|| async { ([(header::CONTENT_TYPE,"image/png")],include_bytes!("../../../logo.png").as_slice()) }))
         .route("/api/health", get(|| async { Json(json!({"service":"studyhub","notes":true,"learning":true,"ok":true,"unified":true})) }))
         .route("/notes/", get(|| async { Redirect::temporary("/notes") }))
         .route("/learn/", get(|| async { Redirect::temporary("/learn") }))

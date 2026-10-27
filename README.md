@@ -1,6 +1,15 @@
-# StudyHub
+<p align="center">
+  <img src="logo.png" width="120" alt="StudyHub logo" />
+</p>
+<h1 align="center">StudyHub</h1>
+<p align="center">
+  Self-hosted notes, notebooks and AI-assisted studying in one Material UI application.<br>
+  Import and review notes, save them to an Obsidian vault, and use selected sources for guided learning, quizzes, flashcards, study guides and interactive activities.<br>
+  History, corrections, journals and progress are saved locally.
+</p>
 
-Self-hosted notes, notebooks and AI-assisted studying in one Material UI application. Import and review notes, save them to an Obsidian vault, and use selected sources for guided learning, quizzes, flashcards, study guides and interactive activities. History, corrections, journals and progress are saved locally.
+<br>
+
 
 ## Start
 

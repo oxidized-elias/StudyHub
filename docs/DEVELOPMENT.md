@@ -53,7 +53,7 @@ Do not add an AI moderator. Model reliability work belongs in provider adapters,
 
 ## Release and repository status
 
-The included CI checks formatting, Cargo tests/build, launcher tests, UI harnesses and API documentation freshness. The Dockerfile builds the same integrated executable with Poppler and a non-root runtime user. It does not bundle or download models.
+The included CI checks formatting, Cargo tests/build, launcher tests, UI harnesses and API documentation freshness.
 
 Before publishing, inspect the actual Git staging area for user content and secrets. Default runtime paths are ignored; custom paths need explicit exclusion. Do not assume `.gitignore` scrubs existing history. This checkout may be delivered without writable Git metadata; no commit, push or remote publication is implicit in these files. Choose a license and add its text before distributing under a license; this repository does not invent a copyright owner or grant rights it cannot establish.
 

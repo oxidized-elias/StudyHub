@@ -38,7 +38,6 @@ node server.mjs --release --no-build
 
 Run under a service manager with a non-root account and writable data directories. Set environment variables in that manager or use Node's explicit `--env-file`. Route `/` and every subpath to the single listener. Allow long model requests (up to 20 minutes at the application/provider level) and at least 64 MiB upload bodies. There are no backend ports to expose.
 
-The included Dockerfile builds the same program and installs Poppler. It mounts persistent data at `/app/data`; set the password through the container environment. A remotely hosted Ollama must be reachable from the container; `127.0.0.1` inside the container refers to the container itself. Browser assets still need CDN access. TLS terminates at your reverse proxy.
 
 ## Files and backups
 
