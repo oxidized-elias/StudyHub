@@ -45,6 +45,10 @@ These integration smoke tests start the integrated executable, fake Ollama and t
 - `history_delete.cjs`, `model_select.cjs`, `warning_dismiss.cjs`, `live_logs.cjs`, `task_controls.cjs`, `notifications.cjs`, `storage_reset.cjs`: scoped controls and lifecycle regressions.
 - `render.cjs`, `learning_render.cjs`: real Marked/KaTeX rendering, code protection, citations and stored math repair.
 
+## Container checks
+
+`npm run test:docker-config` checks health/authentication logic and resolved Compose settings without a daemon. `docker build -t studyhub:smoke .` followed by `node tests/docker-smoke.mjs studyhub:smoke` checks the actual image, graceful shutdown, authentication and persistent data/vault mounts using disposable resources. The dedicated Docker CI workflow runs these checks on a Docker-enabled runner. See [Docker setup](DOCKER.md).
+
 ## Changes
 
 Add routes to the owning library and regenerate `docs/API.md` with `python3 scripts/document-api.py`. Keep the application map current when moving modules. Preserve ownership boundaries: Learn calls the Notes router rather than querying its database. Keep new persistence migrations compatible with existing databases; fresh-install data removal is a release preparation step, not a startup migration.

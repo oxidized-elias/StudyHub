@@ -13,6 +13,18 @@
 
 ## Start
 
+### Docker Compose
+
+Requires Docker and the Docker Compose plugin:
+
+```bash
+docker compose up -d --build
+```
+
+Open **http://localhost:8082**. Settings, history and notes persist in named volumes. For an existing Obsidian vault, host Ollama, authentication or a different port, see [Docker setup](docs/DOCKER.md).
+
+### Manual install
+
 Requires **Node.js 22+**, a current stable **Rust toolchain/Cargo**, and a C compiler for bundled SQLite. Install **Poppler** (`pdftoppm`, `pdftotext`) for PDFs. An AI provider is configured separately; local models run on any reachable Ollama server.
 
 ```bash
@@ -57,6 +69,7 @@ This is a **single-user, trusted workspace**, not a multi-tenant service. Option
 - [Application map](docs/Application%20Map.md): Obsidian-compatible entry point for future contributors/models.
 - [Architecture and data flow](docs/STUDY_SUITE.md): modules, persistence, UI bridge and generated-tool contract.
 - [User guide](docs/USER_GUIDE.md): imports, review, notebooks, study modes, corrections and history.
+- [Docker setup](docs/DOCKER.md): container startup, host vaults, model connections and backups.
 - [Configuration and operations](docs/CONFIGURATION.md): environment, deployment, backup, deletion and troubleshooting.
 - [API reference](docs/API.md): every registered route and handler, examples and response conventions.
 - [Development](docs/DEVELOPMENT.md): source layout, tests, release checks and limitations.

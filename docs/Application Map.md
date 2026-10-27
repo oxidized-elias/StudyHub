@@ -11,6 +11,7 @@ This is the Obsidian-compatible starting point for future models and maintainers
 - [Architecture, data ownership and processing](STUDY_SUITE.md)
 - [Using imports, human review, notebooks and study modes](USER_GUIDE.md)
 - [Environment, deployment, backup and deletion](CONFIGURATION.md)
+- [Docker packaging and persistent mounts](DOCKER.md)
 - [API route and request-type reference](API.md)
 - [Source layout, testing and release process](DEVELOPMENT.md)
 - [Guided practice, corrections, mastery and recall](LEARNING_WORKFLOWS.md)
