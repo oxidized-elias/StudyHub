@@ -1,0 +1,14 @@
+.git
+.agents
+.codex
+.aws
+data
+vault
+target
+node_modules
+.env
+.env.*
+*.db*
+*.sqlite*
+*.log
+**/__pycache__

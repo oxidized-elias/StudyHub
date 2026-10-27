@@ -1,0 +1,25 @@
+[package]
+name = "notes-web"
+version = "0.2.0"
+edition = "2021"
+autobins = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1"
+axum = { version = "0.7", features = ["multipart"] }
+base64 = "0.22"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+regex = "1"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+
+[workspace]
+members = ["apps/SelfHosted-AI_Tests", "apps/StudyHub"]
+default-members = ["apps/StudyHub"]
+resolver = "2"

@@ -1,0 +1,16 @@
+{
+  "name": "studyhub",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Self-hosted notes, notebooks and guided study in one application",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "build": "node server.mjs --build-only --release",
+    "test": "node tests/launcher.test.mjs && cargo test --workspace --locked",
+    "test:ui": "node scripts/test-ui.cjs"
+  }
+}

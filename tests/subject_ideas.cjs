@@ -1,0 +1,20 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm');
+const ts=require(process.env.TYPESCRIPT_RUNTIME||'typescript');
+const html=fs.readFileSync('web/index.html','utf8');
+const source=html.slice(html.indexOf('function Md('),html.indexOf('// AI outputs are JSON'));
+const code=ts.transpileModule(source,{compilerOptions:{jsx:ts.JsxEmit.React,target:ts.ScriptTarget.ES2020}}).outputText;
+const events=[],notes=[];
+const context={React:{useRef:()=>({current:null}),useMemo:f=>f(),createElement:(type,props,...children)=>({type,props,children})},useEffect(){},render:s=>s,mdSx:{},Box:'Box',URL,CustomEvent:class{constructor(type,options){this.type=type;this.detail=options.detail}},window:{dispatchEvent:e=>events.push(e)}};
+vm.createContext(context);vm.runInContext(code+'\nglobalThis.Md=Md;',context);
+const tree=context.Md({md:'Example',documentPath:'Math/Algebra/BigIdeas.md',onNote:(...args)=>notes.push(args)});
+function click(dataset,href=''){let prevented=false;tree.props.onClick({target:{closest:()=>({dataset,getAttribute:()=>href})},preventDefault(){prevented=true}});return prevented}
+assert.ok(click({note:'Math/Big Ideas/degree',heading:''}));
+assert.equal(events.at(-1).detail.path,'Math/Big Ideas/degree');
+assert.ok(click({note:'Math/Algebra/Mind Map Notes/Functions',heading:'Degree'}));
+assert.equal(events.at(-1).detail.heading,'Degree');
+assert.ok(click({},'Mind%20Map%20Notes/Functions.md#Degree'));
+assert.equal(events.at(-1).detail.path,'Math/Algebra/Mind Map Notes/Functions.md');
+assert.equal(events.at(-1).detail.heading,'Degree');
+assert.ok(click({note:'Momentum',heading:'Impulse'}));assert.deepEqual(notes,[['Momentum','Impulse']]);
+assert.equal(click({},'https://example.com/readme.md'),false);
+console.log('PASS: subject concept links, qualified original-note sections, relative course links and existing note navigation.');

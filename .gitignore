@@ -1,0 +1,27 @@
+# User content, keys, source originals, generated notes and SQLite/WAL files
+/data/
+/vault/
+**/data/
+*.db
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.sqlite-*
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.log
+*.bad
+# Build/dependency/tool state
+/target/
+**/target/
+node_modules/
+__pycache__/
+*.py[cod]
+.DS_Store
+/.agents/
+/.codex/
+/.aws/

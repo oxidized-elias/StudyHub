@@ -1,0 +1,744 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Notes to Obsidian</title>
+<style>html,body{height:100%;margin:0;overflow:hidden}#root{height:100%}[contenteditable="true"][data-empty="true"]:before{content:attr(data-placeholder);position:absolute;opacity:.55;pointer-events:none}
+</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@mui/material@5.15.15/umd/material-ui.production.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/katex@0.16.11/dist/katex.min.css">
+<script src="https://unpkg.com/katex@0.16.11/dist/katex.min.js"></script>
+<script src="https://unpkg.com/marked@12.0.2/marked.min.js"></script>
+<script src="https://unpkg.com/dompurify@3.1.6/dist/purify.min.js"></script>
+<script src="https://unpkg.com/mermaid@10.9.1/dist/mermaid.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+</head><body><div id="root"></div>
+<script type="text/babel">
+const {ThemeProvider,createTheme,CssBaseline,AppBar,Toolbar,Typography,IconButton,Drawer,Box,Paper,TextField,Button,Autocomplete,Alert,LinearProgress,MenuItem,Stack,Chip,Tabs,Tab,Accordion,AccordionSummary,AccordionDetails,List,ListItemButton,ListItemText,ToggleButton,ToggleButtonGroup,Switch,FormControlLabel,Dialog,DialogTitle,DialogContent,DialogActions,Checkbox,Tooltip,Divider,InputAdornment}=MaterialUI;
+const {useState,useEffect}=React;
+// Keep warning dismissal separate from the underlying saved job or error record.
+const noticeText=value=>value==null?'':typeof value==='string'||typeof value==='number'?String(value):Array.isArray(value)?value.map(noticeText).join(' '):noticeText(value.props?.text??value.props?.children??value.children);
+function Notice({children,severity='success',action,onClose,dismissKey,sx,...props}){
+ const [dismissed,setDismissed]=useState(null);
+ const signature=severity+':'+noticeText(children),storageKey=dismissKey?'dismissed-warning.'+dismissKey:null;
+ let persisted=false;if(storageKey)try{persisted=localStorage.getItem(storageKey)===signature}catch{}
+ if(dismissed===signature||persisted)return null;
+ const closable=severity==='warning'||severity==='error'||!!onClose;
+ const close=event=>{setDismissed(signature);if(storageKey)try{localStorage.setItem(storageKey,signature)}catch{}onClose?.(event)};
+ return <Alert {...props} sx={[{borderRadius:'8px',alignItems:'center',py:1,minHeight:48,'& .MuiAlert-icon':{p:0,alignItems:'center'},'& .MuiAlert-message':{minWidth:0,py:0,'& p':{my:.5},'& p:first-of-type':{mt:0},'& p:last-child':{mb:0}},'& .MuiAlert-action':{py:0,alignItems:'center',alignSelf:'center'}},...(Array.isArray(sx)?sx:[sx])]} severity={severity} action={closable?<Stack direction="row" spacing={1} alignItems="center">{action}<IconButton color="inherit" size="small" aria-label="Dismiss Warning" title="Dismiss" onClick={close}>×</IconButton></Stack>:action}>{children}</Alert>;
+}
+const DC={background:'#3a3a2f',paper:'#4a4f46',primary:'#b7c59a',secondary:'#b9b99d',text:'#f3f0e8'};
+const mk=c=>createTheme({palette:{mode:'dark',primary:{main:c.primary},secondary:{main:c.secondary},
+ background:{default:c.background,paper:c.paper},text:{primary:c.text,secondary:c.text+'cc'},divider:c.primary+'33'},
+ shape:{borderRadius:10},typography:{fontFamily:'Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif',h5:{fontWeight:700,letterSpacing:'-.025em'},h6:{fontWeight:650,letterSpacing:'-.015em'},subtitle2:{fontWeight:650},button:{textTransform:'none',fontWeight:650}},
+ components:{
+  MuiButton:{defaultProps:{disableElevation:true},styleOverrides:{root:{borderRadius:7,padding:'8px 14px',transition:'background-color .18s,border-color .18s'},sizeSmall:{padding:'5px 10px'}}},
+  MuiPaper:{styleOverrides:{root:{backgroundImage:'none'},outlined:{borderColor:c.primary+'33'}}},
+  MuiTextField:{defaultProps:{size:'small'}},
+  MuiOutlinedInput:{styleOverrides:{root:{borderRadius:7,backgroundColor:'rgba(0,0,0,.08)'}}},
+  MuiTab:{styleOverrides:{root:{textTransform:'none',fontWeight:650,minHeight:44,padding:'10px 16px'}}},
+  MuiTabs:{styleOverrides:{root:{minHeight:44},indicator:{height:3,borderRadius:3}}},
+  MuiAccordion:{styleOverrides:{root:{backgroundImage:'none',border:'1px solid '+c.primary+'22',borderRadius:'9px !important',marginBottom:8,'&:before':{display:'none'}}}},
+  MuiChip:{styleOverrides:{root:{fontWeight:550,borderRadius:7}}},
+  MuiDialog:{styleOverrides:{paper:{backgroundImage:'none',border:'1px solid '+c.primary+'33'}}},
+  MuiDialogTitle:{styleOverrides:{root:{fontWeight:650,padding:'20px 24px'}}},
+  MuiDialogActions:{styleOverrides:{root:{padding:'16px 24px',gap:8}}},
+  MuiAlert:{styleOverrides:{root:{borderRadius:7}}}
+ }});
+const dangerButton={bgcolor:'#8b272c',color:'#fff','&:hover':{bgcolor:'#6e1d22'},'&.Mui-disabled':{bgcolor:'rgba(139,39,44,.2)',color:'rgba(255,255,255,.4)'}};
+function EmptyState({title,detail}){return <Stack alignItems="center" justifyContent="center" spacing={1} sx={{minHeight:220,textAlign:'center',px:3,py:5}}><Box aria-hidden="true" sx={{width:48,height:48,borderRadius:3,bgcolor:'action.hover',display:'grid',placeItems:'center',color:'primary.main',fontSize:28,mb:1}}>◇</Box><Typography variant="subtitle1" fontWeight={650}>{title}</Typography><Typography variant="body2" color="text.secondary" sx={{maxWidth:340}}>{detail}</Typography></Stack>}
+const APP_BASE=window.__APP_BASE__||'';
+const EMBEDDED=!!window.__EMBEDDED__;
+const appUrl=p=>typeof p==='string'&&p.startsWith('/api/')?APP_BASE+p:p;
+const appFetch=(u,o)=>globalThis.fetch(appUrl(u),o);
+const studyLink=(ids,mode)=>`${window.__LEARNING_URL__||'http://127.0.0.1:8081'}/?note_ids=${ids.join(',')}&mode=${mode}`;
+const handoff=(e,ids,mode)=>{if(EMBEDDED){e.preventDefault();window.parent.postMessage({type:'study-notes',note_ids:ids,mode},window.location.origin)}};
+const api=async(u,o)=>{const r=await appFetch(u,o);const j=await r.json();if(!r.ok)throw new Error(j.error||r.statusText);return j};
+const pre={whiteSpace:'pre-wrap',fontSize:12,m:0,p:1,borderRadius:1,bgcolor:'rgba(0,0,0,.18)',maxHeight:320,overflow:'auto'};
+const mdSx={'& > :first-child':{mt:0},'& > :last-child':{mb:0},lineHeight:1.65,'& a':{color:'primary.main'},'& pre':{bgcolor:'rgba(0,0,0,.25)',p:1.5,borderRadius:2,overflow:'auto'},'& code':{fontSize:'.9em'},
+ '& blockquote':{borderLeft:'3px solid',borderColor:'primary.main',m:0,pl:2},'& details':{border:'1px solid',borderColor:'divider',borderRadius:2,px:1.5,py:.5,my:1},
+ '& summary':{cursor:'pointer',fontWeight:600},'& table':{borderCollapse:'collapse',display:'block',overflowX:'auto',maxWidth:'100%'},'& td,& th':{border:'1px solid',borderColor:'divider',px:1,py:.5},
+ '& .source-highlight':{backgroundColor:'rgba(255,213,79,.16)',boxShadow:'-4px 0 #e9bd50',pl:1.5,pr:1,borderRadius:'4px',scrollMarginTop:32},'& .katex-display':{overflowX:'auto',overflowY:'hidden',py:1},'& .mermaid svg':{maxWidth:'100%',height:'auto'},'& .diagram-error':{border:'1px solid',borderColor:'warning.main',p:1,borderRadius:1},'& .mermaid':{overflowX:'auto',bgcolor:'rgba(0,0,0,.2)',borderRadius:2,p:1,textAlign:'center',my:1}};
+
+const submitOnEnter=(event,submit,enabled=true)=>{if(event.key!=='Enter'||event.shiftKey||event.repeat||event.isComposing||event.nativeEvent?.isComposing||event.keyCode===229)return;event.preventDefault();if(enabled)submit();};
+function NumberField({value,onChange,min=0,max=100000,step=1,inputProps={},InputProps={},sx,...props}){
+ const update=n=>onChange?.({target:{value:String(Math.max(min,Math.min(max,n)))}});
+ return <TextField {...props} type="text" value={value} onChange={e=>{if(e.target.value===''||/^\d+$/.test(e.target.value))onChange?.(e)}} onBlur={()=>{if(value===''||Number(value)<min||Number(value)>max)update(Number(value)||min)}} sx={{minWidth:130,...sx}} inputProps={{...inputProps,inputMode:'numeric',pattern:'[0-9]*'}} InputProps={{...InputProps,endAdornment:<InputAdornment position="end"><Stack direction="row" spacing={.25}><IconButton size="small" aria-label="Decrease value" disabled={Number(value)<=min} onClick={()=>update(Number(value)-step)} sx={{width:26,height:26,fontSize:18}}>−</IconButton><IconButton size="small" aria-label="Increase value" disabled={Number(value)>=max} onClick={()=>update(Number(value)+step)} sx={{width:26,height:26,fontSize:18}}>+</IconButton></Stack></InputAdornment>}}/>;
+}
+mermaid.initialize({startOnLoad:false,theme:'dark',securityLevel:'strict',flowchart:{htmlLabels:false},suppressErrorRendering:true});
+const escapeHtml=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const normalizeMath=text=>String(text).replace(/\x08dots/g,'\\dots').replace(/\x08(egin|eta|ar|inom|oldsymbol)\b/g,'\\b$1').replace(/\x0c(rac|orall)\b/g,'\\f$1').replace(/\t(ext|imes|heta|o)\b/g,'\\t$1').replace(/\r(ight(?:arrow)?|angle|ho)\b/g,'\\r$1').replace(/\n(abla|u|eq|otin)\b/g,'\\n$1');
+const repairMathControls=source=>String(source).split(/(`{3,}[^]*?`{3,}|~{3,}[^]*?~{3,}|`[^`\n]*`)/g).map((part,index)=>index%2?part:part.replace(/(\$\$?)([^]*?)\1/g,(_,delimiter,math)=>delimiter+normalizeMath(math)+delimiter)).join('');
+// Normalize only unambiguous plain math; preserve explicit math and literal code.
+const readableMathMarkdown=source=>String(source||'').split(/(```[^]*?```|~~~[^]*?~~~|`[^`\n]*`|\$\$[^]*?\$\$|\$[^$\n]+\$)/g).map((part,index)=>{
+ if(index%2)return part;
+ const latex=text=>text.replace(/\^\(([^()]+)\)/g,'^{$1}').replace(/\^([-+]?\d+(?:\.\d+)?|[A-Za-z])/g,'^{$1}');
+ return part.split('\n').map(line=>{
+  const text=line.trim(),withoutFunctions=text.replace(/\b(?:sin|cos|tan|log|ln|sqrt|abs)\b/g,'x');
+  const formula=text.length>0&&/[=<>^]/.test(text)&&/^[\dA-Za-z\s+*/().,^{}=<>−-]+$/.test(text)&&!/\b[A-Za-z]{2,}\b/.test(withoutFunctions)&&!/^\s*[-*]\s+[A-Za-z]/.test(line);
+  if(formula)return '$'+latex(text.replace(/−/g,'-'))+'$';
+  return line.replace(/\b(?:\d+(?:\.\d+)?[A-Za-z]?|[A-Za-z])\^(?:\{[^}\n]+\}|\([^()\n]+\)|[-+]?\d+(?:\.\d+)?|[A-Za-z])/g,expression=>'$'+latex(expression)+'$');
+ }).join('\n');
+}).join('');
+const mathHtml=(text,displayMode)=>{const clean=normalizeMath(text);if(typeof katex==='undefined')return `<code>${escapeHtml(clean)}</code>`;try{return katex.renderToString(clean,{displayMode,throwOnError:true,trust:false,maxExpand:1000,maxSize:20})}catch{return `<code class="math-fallback">${escapeHtml(clean)}</code>`}};
+// Extensions run inside the Markdown lexer, so code spans/fences remain literal.
+const render=(md,sid=0,nolink=false)=>{
+ md=readableMathMarkdown(md);
+ const parser=new marked.Marked({gfm:true,breaks:false,extensions:[
+  {name:'obsidianCallout',level:'block',start:src=>src.search(/^ {0,3}>[ \t]*\[!/m),
+   tokenizer(src){
+    const head=/^ {0,3}>[ \t]*\[!([\w-]+)\]([+-]?)[ \t]*([^\n]*)(?:\n|$)/.exec(src);if(!head)return;
+    let raw=head[0],body='',rest=src.slice(raw.length),line;
+    while((line=/^ {0,3}>(?:[ \t]?)([^\n]*)(?:\n|$)/.exec(rest))&&line[0]){raw+=line[0];body+=line[1]+'\n';rest=rest.slice(line[0].length)}
+    return {type:'obsidianCallout',raw,title:head[3]||head[1],fold:head[2],tokens:this.lexer.blockTokens(body)};
+   },renderer(token){return `<details ${token.fold==='-'?'':'open'}><summary>${escapeHtml(token.title)}</summary>${this.parser.parse(token.tokens)}</details>`}
+  },
+  {name:'obsidianLink',level:'inline',start:src=>src.indexOf('[['),
+   tokenizer(src){const m=/^!?\[\[([^\]\n]+)\]\]/.exec(src);if(m)return {type:'obsidianLink',raw:m[0],value:m[1]};},
+   renderer(token){
+    const parts=token.value.split('|'),target=parts.shift().trim(),alias=parts.join('|')||target;
+    const hash=target.indexOf('#'),note=hash<0?target:target.slice(0,hash),heading=hash<0?'':target.slice(hash+1);
+    if(!note&&heading)return `<a href="#${encodeURIComponent(heading)}" data-heading="${escapeHtml(heading)}">${escapeHtml(parts.length?alias:heading)}</a>`;
+    if(nolink)return `<em>${escapeHtml(alias)}</em>`;
+    if(/\.(pdf|md|markdown|txt|png|jpe?g|webp)$/i.test(note))return `<a href="${APP_BASE}/api/review/session/${sid}/pdf/${encodeURIComponent(note)}" target="_blank" rel="noopener noreferrer">${escapeHtml(alias)}</a>`;
+    return `<a href="#" data-note="${escapeHtml(note)}" data-heading="${escapeHtml(heading)}">${escapeHtml(alias)}</a>`;
+   }
+  },
+  {name:'mathBlock',level:'block',start:src=>src.search(/(?:^|\n)[ \t]*(?:\$\$|\\\[)/),
+   tokenizer(src){const m=/^ {0,3}(?:\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\])[ \t]*(?:\n|$)/.exec(src);if(m)return {type:'mathBlock',raw:m[0],text:(m[1]||m[2]).trim()};},
+   renderer:token=>mathHtml(token.text,true)+'\n'
+  },
+  {name:'mathInline',level:'inline',start:src=>{const m=src.match(/\$|\\\(/);return m?.index;},
+   tokenizer(src){const m=/^(?:\$(?![ $])((?:\\.|[^\n$\\]|\n(?=abla|u\b|eq|otin))+?)(?<! )\$(?!\d)|\\\(([^\n]+?)\\\))/.exec(src);if(m)return {type:'mathInline',raw:m[0],text:m[1]||m[2]};},
+   renderer:token=>mathHtml(token.text,false)
+  }
+ ]});
+ const text=repairMathControls(md||'').replace(/^\uFEFF/,'').replace(/\r\n?/g,'\n').replace(/^---[ \t]*\n[\s\S]*?\n---[ \t]*(?:\n|$)/,'');
+ return DOMPurify.sanitize(parser.parse(text),{ADD_ATTR:['target','rel']});
+};
+let diagramQueue=Promise.resolve(),diagramId=0;
+
+// Render as the user types while retaining the original Markdown for saving/submission.
+const powerPattern=/\b(?:\d+(?:\.\d+)?[A-Za-z]?|[A-Za-z])\^(?:\{[^}\n]+\}|\([^()\n]+\)|[-+]?\d+(?:\.\d+)?|[A-Za-z])/g;
+const plainMathMarkdown=readableMathMarkdown;
+const editorInline=line=>{
+ const tokens=/(`[^`\n]+`|\*\*[^*\n]+\*\*|__[^_\n]+__|~~[^~\n]+~~|\*[^*\n]+\*|_[^_\n]+_|\$[^$\n]+\$|\b(?:\d+(?:\.\d+)?[A-Za-z]?|[A-Za-z])\^(?:\{[^}\n]+\}|\([^()\n]+\)|[-+]?\d+(?:\.\d+)?|[A-Za-z]))/g;
+ let html='',offset=0;for(const match of line.matchAll(tokens)){
+  html+=escapeHtml(line.slice(offset,match.index));const raw=match[0];let rendered;
+  if(raw.startsWith('`'))rendered='<code>'+escapeHtml(raw.slice(1,-1))+'</code>';
+  else if(raw.startsWith('**')||raw.startsWith('__'))rendered='<strong>'+escapeHtml(raw.slice(2,-2))+'</strong>';
+  else if(raw.startsWith('~~'))rendered='<s>'+escapeHtml(raw.slice(2,-2))+'</s>';
+  else if(raw.startsWith('*')||raw.startsWith('_'))rendered='<em>'+escapeHtml(raw.slice(1,-1))+'</em>';
+  else if(raw.startsWith('$'))rendered=mathHtml(raw.slice(1,-1),false);
+  else {const p=raw.indexOf('^'),exp=raw.slice(p+1).replace(/^[{(]|[})]$/g,'');rendered=escapeHtml(raw.slice(0,p))+'<sup>'+escapeHtml(exp)+'</sup>';}
+  html+='<span contenteditable="false" data-md-source="'+escapeHtml(raw)+'">'+rendered+'</span>&#8203;';offset=match.index+raw.length;
+ }return html+escapeHtml(line.slice(offset));
+};
+const editorHtml=source=>{let fenced=false;return String(source||'').split('\n').map(line=>{const fence=/^\s*(```|~~~)/.test(line);if(fence)fenced=!fenced;const html=fenced||fence?escapeHtml(line):editorInline(line);return '<div data-md-line="true"'+(/^#{1,6} /.test(line)?' style="font-weight:700"':'')+'>'+(html||'<br data-md-empty="true">')+'</div>'}).join('')};
+const editorSource=node=>{
+ if(node.nodeType===3)return (node.nodeValue||'').replace(/\u200b/g,'');
+ if(node.nodeType===1&&node.hasAttribute('data-md-source'))return node.getAttribute('data-md-source');
+ if(node.nodeType===1&&node.tagName==='BR')return node.hasAttribute('data-md-empty')?'':'\n';
+ let source='';for(const child of Array.from(node.childNodes||[])){
+  if(source&&!source.endsWith('\n')&&child.nodeType===1&&['DIV','P'].includes(child.tagName))source+='\n';
+  source+=editorSource(child);
+  if(child.nodeType===1&&child.hasAttribute('data-md-line'))source+='\n';
+ }return source.endsWith('\n')?source.slice(0,-1):source;
+};
+function editorSelection(root){
+ const selection=window.getSelection();if(!selection?.rangeCount||!root.contains(selection.anchorNode))return [editorSource(root).length,editorSource(root).length];
+ const range=selection.getRangeAt(0),prefix=document.createRange();prefix.selectNodeContents(root);prefix.setEnd(range.startContainer,range.startOffset);
+ const start=editorSource(prefix.cloneContents()).length;prefix.setEnd(range.endContainer,range.endOffset);
+ return [start,editorSource(prefix.cloneContents()).length];
+}
+function restoreEditorCaret(root,offset){
+ const range=document.createRange();let left=offset,found=false;
+ const visit=node=>{if(found)return;if(node.nodeType===3){const raw=node.nodeValue||'',length=raw.replace(/\u200b/g,'').length;if(left<=length){let position=0,seen=0;while(position<raw.length&&seen<left){if(raw[position]!=='\u200b')seen++;position++;}range.setStart(node,position);found=true;}else left-=length;return;}
+  if(node.nodeType===1&&node.hasAttribute('data-md-source')){const length=node.getAttribute('data-md-source').length;if(left<=length){if(left===0)range.setStartBefore(node);else range.setStartAfter(node);found=true;}else left-=length;return;}
+  for(const child of Array.from(node.childNodes||[])){visit(child);if(found)return;}
+ };
+ const lines=Array.from(root.childNodes);for(let i=0;i<lines.length;i++){visit(lines[i]);if(found)break;if(i<lines.length-1){if(left===0){range.setStart(root,i+1);found=true;break;}left--;}}
+ if(!found){range.selectNodeContents(root);range.collapse(false);}else range.collapse(true);
+ const selection=window.getSelection();selection.removeAllRanges();selection.addRange(range);
+}
+const RichMarkdownControl=(React.forwardRef||(fn=>fn))(function RichMarkdownControl({value='',onChange,onKeyDown,disabled,placeholder='Write here. Markdown and math are supported.',id,className,style,autoFocus,onBlur,onFocus,'aria-describedby':describedBy,...rest},forwardedRef){
+ const node=React.useRef(null),raw=React.useRef(String(value)),composing=React.useRef(false),history=React.useRef({past:[],future:[]});
+ const paint=(text,caret)=>{if(!node.current)return;node.current.innerHTML=editorHtml(text);if(caret!=null)restoreEditorCaret(node.current,caret)};
+ useEffect(()=>{if(node.current&&(raw.current!==String(value)||!node.current.childNodes.length)){raw.current=String(value);paint(raw.current)}},[value]);
+ useEffect(()=>{if(autoFocus)node.current?.focus()},[]);
+ const change=(text,caret,event,record=true)=>{if(record&&text!==raw.current){history.current.past.push(raw.current);history.current.past=history.current.past.slice(-100);history.current.future=[]}raw.current=text;onChange?.({...event,target:{value:text}});paint(text,caret)};
+ const replace=(text,event)=>{const [start,end]=editorSelection(node.current);change(raw.current.slice(0,start)+text+raw.current.slice(end),start+text.length,event)};
+ const key=event=>{onKeyDown?.(event);if(event.defaultPrevented||event.isComposing||event.nativeEvent?.isComposing||event.keyCode===229)return;
+  if(event.key==='Enter'&&event.shiftKey){event.preventDefault();replace('\n',event);return;}
+  if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='z'){event.preventDefault();const undo=!event.shiftKey,from=undo?history.current.past:history.current.future,to=undo?history.current.future:history.current.past;if(from.length){to.push(raw.current);const text=from.pop();change(text,text.length,event,false)}return;}
+  if(!event.ctrlKey&&!event.metaKey&&(event.key==='Backspace'||event.key==='Delete')){event.preventDefault();let [start,end]=editorSelection(node.current);if(start===end){if(event.key==='Backspace')start-=Array.from(raw.current.slice(0,start)).pop()?.length||0;else end+=Array.from(raw.current.slice(end))[0]?.length||0}change(raw.current.slice(0,start)+raw.current.slice(end),start,event)}
+ };
+ return <div ref={el=>{node.current=el;if(typeof forwardedRef==='function')forwardedRef(el);else if(forwardedRef)forwardedRef.current=el}} id={id} className={className} role="textbox" aria-label={rest['aria-label']||placeholder||'Markdown Input'} aria-describedby={describedBy} aria-multiline="true" aria-disabled={disabled} contentEditable={!disabled} suppressContentEditableWarning data-placeholder={placeholder} data-empty={!String(value)} onFocus={onFocus} onBlur={onBlur} onKeyDown={key} onCompositionStart={()=>{composing.current=true}} onCompositionEnd={e=>{composing.current=false;change(editorSource(node.current),editorSelection(node.current)[0],e)}} onInput={e=>{if(!composing.current)change(editorSource(node.current),editorSelection(node.current)[0],e)}} onPaste={e=>{e.preventDefault();replace(e.clipboardData.getData('text/plain'),e)}} onCut={e=>{const [start,end]=editorSelection(node.current);if(start!==end){e.preventDefault();e.clipboardData.setData('text/plain',raw.current.slice(start,end));replace('',e)}}} onCopy={e=>{const [start,end]=editorSelection(node.current);if(start!==end){e.preventDefault();e.clipboardData.setData('text/plain',raw.current.slice(start,end))}}} style={{...style,whiteSpace:'pre-wrap',overflowWrap:'anywhere',outline:'none',minHeight:'3em',width:'100%',cursor:disabled?'default':'text'}}/>;
+});
+
+function SettingsModelSelect({label,value,onChange,options,helperText}){
+ const [custom,setCustom]=useState(false);
+ const choices=[...new Set([value,...options].filter(Boolean))].sort();
+ return <Stack spacing={1}><TextField select label={label} value={custom?'__custom__':value||''} onChange={e=>{if(e.target.value==='__custom__')setCustom(true);else{setCustom(false);onChange(e.target.value)}}} helperText={helperText}><MenuItem value="">None Selected</MenuItem>{choices.map(model=><MenuItem key={model} value={model}>{model}</MenuItem>)}<MenuItem value="__custom__">Enter Custom Model ID…</MenuItem></TextField>{custom&&<TextField label="Custom Model ID" value={value} onChange={e=>onChange(e.target.value)}/>}</Stack>;
+}
+function Settings({s,setS,status}){
+ const [rec,setRec]=useState(null);
+ useEffect(()=>{let active=true;setRec(null);const timer=setTimeout(()=>{if(s.provider==='ollama')api('/api/models?installed_only=true&url='+encodeURIComponent(s.ollama_url)).then(v=>{if(active)setRec(v)}).catch(()=>{})},500);return()=>{active=false;clearTimeout(timer)}},[s.provider,s.ollama_url]);
+ const m=s.models[s.provider],cloud=s.provider!=='ollama';
+ const setM=(k,v)=>setS({...s,models:{...s.models,[s.provider]:{...m,[k]:v}}});
+ return <Box sx={{width:{xs:'100vw',sm:420},maxWidth:'100vw',boxSizing:'border-box',p:3}}><Typography variant="h6" gutterBottom>Settings</Typography>
+ <Stack spacing={2}>
+  <TextField select label="Note Style" value={s.note_style||'bullet_points'} onChange={e=>setS({...s,note_style:e.target.value})}><MenuItem value="bullet_points">Bullet points</MenuItem><MenuItem value="text_chunks">Text chunks</MenuItem><MenuItem value="hybrid">Combined · light text and bullets</MenuItem></TextField>
+  <TextField label="Obsidian vault folder" value={s.vault_path} onChange={e=>setS({...s,vault_path:e.target.value})} helperText="Full path. Created when the first note is saved. Open this folder in Obsidian."/>
+  <TextField label="Learning app URL" value={s.learning_url||''} onChange={e=>setS({...s,learning_url:e.target.value})}/>
+  <TextField label="Unified workspace URL" value={s.hub_url||''} onChange={e=>setS({...s,hub_url:e.target.value})}/>
+  <Typography variant="subtitle2">Colors</Typography>
+  <Stack direction="row" flexWrap="wrap" useFlexGap spacing={1}>
+   {[['background','Background'],['paper','Panels'],['primary','Highlight'],['secondary','Accent'],['text','Text']].map(([k,l])=>
+    <TextField key={k} type="color" label={l} value={s.colors[k]} onChange={e=>setS({...s,colors:{...s.colors,[k]:e.target.value}})} sx={{width:120}} InputLabelProps={{shrink:true}}/>)}
+  </Stack>
+  <Button size="small" onClick={()=>setS({...s,colors:DC})}>Reset colors</Button>
+  <TextField select label="AI provider" value={s.provider} onChange={e=>setS({...s,provider:e.target.value})}>
+   {['ollama','claude','deepseek','openai','gemini'].map(p=><MenuItem key={p} value={p}>{p==='ollama'?'Local AI (Ollama)':p}</MenuItem>)}
+  </TextField>
+  {cloud?<TextField type="password" label={s.provider+' API key'} value={s.keys[s.provider]||''} onChange={e=>setS({...s,keys:{...s.keys,[s.provider]:e.target.value}})}/>
+        :<TextField label="Server IP" value={s.ollama_url} onChange={e=>setS({...s,ollama_url:e.target.value})}/>}
+  <SettingsModelSelect key={s.provider+'-author'} label="AI #1 model (big ideas)" value={m.ai1} onChange={value=>setM('ai1',value)} options={cloud?[m.ai1,m.vision]:(rec?.installed||[])} helperText="Choose a model or enter a custom model ID."/>
+  <SettingsModelSelect key={s.provider+'-vision'} label="Vision model (reads the pages)" value={m.vision} onChange={value=>setM('vision',value)} options={cloud?[m.ai1,m.vision]:(rec?.installed||[])} helperText={s.provider==='deepseek'?'DeepSeek cannot read images':'Choose an installed model that supports images.'}/>
+  {!cloud&&<Stack direction="row" spacing={1}>
+   <NumberField min={2048} max={2000000} step={1024} label="AI #1 Context" value={s.ai1_ctx} onChange={e=>setS({...s,ai1_ctx:+e.target.value})}/>
+   </Stack>}
+  <TextField InputLabelProps={{shrink:true}} InputProps={{inputComponent:RichMarkdownControl}} multiline minRows={3} label="Extra text added to every prompt" value={s.extra_prompt} onChange={e=>setS({...s,extra_prompt:e.target.value})}/>
+  <FormControlLabel control={<Switch checked={s.web_search!==false} onChange={e=>setS({...s,web_search:e.target.checked})}/>} label="Let the AIs search the web for background (never put in notes)"/>
+  <FormControlLabel control={<Switch checked={s.auto_convert!==false} onChange={e=>setS({...s,auto_convert:e.target.checked})}/>} label="Auto-convert other image formats (HEIC, AVIF, TIFF...) to PNG"/>
+  <FormControlLabel control={<Switch checked={s.lessons_store!==false} onChange={e=>setS({...s,lessons_store:e.target.checked})}/>} label="Save AI validation failures as lessons"/>
+  <FormControlLabel control={<Switch checked={s.lessons_use!==false} onChange={e=>setS({...s,lessons_use:e.target.checked})}/>} label="Let the AIs look at past lessons when deciding"/>
+  <FormControlLabel disabled={s.lessons_use===false} control={<Switch checked={s.lessons_need_user!==false} onChange={e=>setS({...s,lessons_need_user:e.target.checked})}/>} label="Only use lessons that include my input"/>
+  <FormControlLabel control={<Switch checked={s.read_notes!==false} onChange={e=>setS({...s,read_notes:e.target.checked})}/>} label="Let the AIs read previous notes in the topic"/>
+  {!cloud&&<><Button color="secondary" onClick={async()=>setRec(await api('/api/models?url='+encodeURIComponent(s.ollama_url)))}>Detect models and recommend</Button>
+   {rec&&<Box><Typography variant="caption">Installed (click to use for the author)</Typography>
+    <Box>{rec.installed.length?rec.installed.map(n=><Chip key={n} label={n} sx={{m:.3}} onClick={()=>setS({...s,models:{...s.models,ollama:{...m,ai1:n}}})}/>):' none found / server unreachable'}</Box>
+    <Typography variant="caption">Recommended: {rec.source}</Typography>
+    <Box>{rec.recommended.map(n=><Chip key={n} variant="outlined" label={n} sx={{m:.3}}/>)}</Box></Box>}</>}
+  <Typography variant="caption" color={status.err?'error':'text.secondary'}>{status.err||(status.saving?'Saving...':'Saved on the server automatically')}</Typography>
+ </Stack></Box>;
+}
+
+function Upload({ver,refresh,sessions}){
+ const bulkStop=React.useRef(false);
+ const [bulk,setBulk]=useState(false),[queue,setQueue]=useState(null),[bulkResults,setBulkResults]=useState([]);
+ // Send only one file at a time so a large selection never becomes one huge request.
+ const bulkGo=async()=>{
+  const pending=[...files];bulkStop.current=false;setBusy(true);setRes(null);setBulkResults([]);
+  try{
+   for(let i=0;i<pending.length;i++){
+    if(bulkStop.current)break;
+    const file=pending[i];setQueue({index:i+1,total:pending.length,name:file.name});
+    try{
+     const body=new FormData();body.append('file',file);body.append('unknown','true');if(f.course_name.trim())body.append('course_name',f.course_name.trim());if(f.class_type.trim())body.append('class_type',f.class_type.trim());if(skipHuman)body.append('skip_human','true');if(noteStyle)body.append('note_style',noteStyle);
+     const {session_id}=await api('/api/submit',{method:'POST',body});
+     setActive({id:session_id,append:false});
+     let row;
+     do{
+      await new Promise(resolve=>setTimeout(resolve,2000));
+      row=await api('/api/review/session/'+session_id);await refresh();
+     }while(['running','waiting','review'].includes(row.status));
+     setBulkResults(p=>[...p,{name:file.name,ok:row.status==='done',message:row.error||row.title}]);
+    }catch(e){setRes({ok:false,msg:e.message});break}
+    setFiles(p=>p.filter(x=>x!==file));
+   }
+  }finally{setQueue(null);setBusy(false);await refresh()}
+ };
+ const [files,setFiles]=useState([]),[cts,setCts]=useState([]),[busy,setBusy]=useState(false),[res,setRes]=useState(null),
+  [prev,setPrev]=useState(null),[append,setAppend]=useState(false),
+  [f,setF]=useState({course_name:'',unit:'',lesson:'',class_type:'',course_link:'',course_id:''}),[noteStyle,setNoteStyle]=useState('');
+ const [skipHuman,setSkipHuman]=useState(false);
+ const [active,setActive]=useState(null);
+ const act=active&&sessions.find(r=>r.id===active.id);
+ const running=busy||(act&&(['running','waiting','review'].includes(act.status)));
+ const killAct=async()=>{bulkStop.current=true;try{await api(`/api/review/session/${act.id}/kill`,{method:'POST'});await refresh()}catch(e){setRes({ok:false,msg:e.message})}};
+ useEffect(()=>{api('/api/lookup').then(j=>setCts(j.class_types))},[ver,act&&act.status]);
+ const set=k=>e=>setF({...f,[k]:e.target.value});
+ const add=l=>{if(!running)setFiles(p=>[...p,...Array.from(l)])};
+ const sortNames=()=>setFiles(p=>[...p].sort((a,b)=>a.name.localeCompare(b.name,undefined,{numeric:true})));
+ const pick=async ct=>{if(!ct)return;const j=await api('/api/lookup?class_type='+encodeURIComponent(ct));
+  setF(p=>({...p,class_type:ct,course_link:p.course_link||j.course_link,course_id:p.course_id||j.course_id}))};
+ const done=sessions.filter(r=>r.status==='done'&&r.title);
+ const label=r=>`${r.class_type} / ${r.course} / ${r.unit?`U${r.unit} `:''}${r.lesson} - ${r.title}`;
+ const loadPrev=async r=>{setPrev(r);setAppend(false);if(!r)return;
+  const j=await api('/api/lookup?class_type='+encodeURIComponent(r.class_type));
+  setF({course_name:r.course,unit:r.unit,lesson:r.lesson,class_type:r.class_type,course_link:j.course_link,course_id:j.course_id})};
+ const lock=append&&!!prev;
+ const ok=files.length&&(bulk||(append&&prev)||(f.course_name&&f.lesson&&f.class_type));
+ const go=async()=>{setBusy(true);setRes(null);
+  try{const d=new FormData();files.forEach(x=>d.append('file',x));Object.entries(f).forEach(([k,v])=>d.append(k,v));
+   if(lock)d.append('append_to',prev.id);if(noteStyle)d.append('note_style',noteStyle);
+   const r=await api('/api/submit',{method:'POST',body:d});
+   setActive({id:r.session_id,append:lock});setFiles([]);await refresh()}
+  catch(e){setRes({ok:false,msg:e.message})}setBusy(false)};
+ return <Stack spacing={2}>
+  <Box><Typography data-tour="notes-upload" variant="h5" gutterBottom>Add Your Notes</Typography><Typography variant="body2" color="text.secondary">Upload your pages. Review the draft. Save to Obsidian.</Typography></Box>
+  <FormControlLabel control={<Switch disabled={running} checked={bulk} onChange={e=>{setBulk(e.target.checked);setAppend(false)}}/>} label="Bulk unknown upload"/>
+  {bulk&&<FormControlLabel control={<Switch disabled={running} checked={skipHuman} onChange={e=>setSkipHuman(e.target.checked)}/>} label="Skip human intervention"/>}
+  {bulk&&skipHuman&&<Typography variant="body2" color="text.secondary">Save generated notes automatically and skip clarification questions. Unreadable content stays marked illegible. Automatic saves do not create human correction lessons.</Typography>}
+  {bulk&&<Notice severity="info">Each file becomes its own note; each PDF keeps all its pages together. Set Class and Course below, or leave either blank for the AI to infer. Lesson and unit name are inferred per file. Unit numbers stay optional. Files are uploaded and processed one at a time (64 MiB per file). Keep this tab open until the queue finishes.</Notice>}
+  {queue&&<Notice severity="info">Processing {queue.index} of {queue.total}: {queue.name}</Notice>}
+  {bulkResults.length>0&&<Box sx={{maxHeight:240,overflow:'auto'}}>{bulkResults.map((r,i)=><Typography key={i} color={r.ok?'primary':'error'}>{r.name}: {r.message||'Failed'}</Typography>)}</Box>}
+  <Autocomplete disabled={bulk||running} size="small" options={done} value={prev} getOptionLabel={label} onChange={(_,v)=>loadPrev(v)}
+   renderInput={p=><TextField {...p} label="Load previous context (optional)" helperText="Fills the form from an earlier note so you can keep adding to that course and unit"/>}/>
+  {prev&&!bulk&&<FormControlLabel control={<Switch checked={append} onChange={e=>setAppend(e.target.checked)}/>} label={`Add these pages to "${prev.title}" instead of making a new note`}/>}
+  <Paper variant="outlined" sx={{p:{xs:2,sm:3},textAlign:'center',borderStyle:'dashed',borderWidth:2,bgcolor:'rgba(0,0,0,.06)',transition:'border-color .18s,background-color .18s','&:hover':{borderColor:'primary.main',bgcolor:'action.hover'}}} onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();add(e.dataTransfer.files)}}>
+   <Typography color="text.secondary" gutterBottom>{bulk?'Drop any number of note files here. Each file is processed separately with inferred context.':'Drop all pages of one set of notes here (JPG, PNG, WEBP, PDF, Markdown .md, or HEIC/AVIF/TIFF with auto-convert on). Together they become ONE note, in the order shown.'}</Typography>
+   <Button disabled={running} component="label" variant="outlined">Choose files<input hidden multiple type="file" accept="image/*,.pdf,.md,.markdown,.txt,.heic,.heif,.avif,.tif,.tiff,.bmp" onChange={e=>{add(e.target.files);e.target.value=''}}/></Button>
+   {files.length>1&&<Button disabled={running} onClick={sortNames} sx={{ml:1}}>Sort by name</Button>}
+   <Box sx={{mt:2,maxHeight:170,overflow:'auto'}}>{files.slice(0,100).map((x,i)=><Chip key={i} label={`${i+1}. ${x.name}`} sx={{m:.3}} onDelete={running?undefined:()=>setFiles(p=>p.filter((_,j)=>j!==i))}/>)}</Box>
+  </Paper>
+  <Typography variant="caption">{files.length} file(s) selected{files.length>100?" (showing first 100)":""}</Typography>
+  <Paper variant="outlined" sx={{p:{xs:2,sm:2.5}}}><Stack spacing={2.5}>
+   <TextField select label="Note Style for this upload" value={noteStyle} onChange={e=>setNoteStyle(e.target.value)}><MenuItem value="">Use settings default</MenuItem><MenuItem value="bullet_points">Bullet points</MenuItem><MenuItem value="text_chunks">Text chunks</MenuItem><MenuItem value="hybrid">Combined · light text and bullets</MenuItem></TextField>
+   <Typography variant="subtitle2">{bulk?'Bulk filing (optional)':'Note details'}</Typography>
+   <Stack direction={{xs:"column",sm:"row"}} spacing={2}>
+    <TextField required={!bulk} fullWidth disabled={lock||running} label={bulk?"Course (optional)":"Course Name"} helperText={bulk?"Applies to every file. Leave blank to infer each course.":undefined} value={f.course_name} onChange={set('course_name')}/>
+    <Autocomplete freeSolo fullWidth disabled={lock||running} options={cts} inputValue={f.class_type} onInputChange={(_,v)=>setF(p=>({...p,class_type:v}))}
+     onChange={(_,v)=>pick(v)} renderInput={p=><TextField {...p} required={!bulk} label={bulk?"Class / Subject (optional)":"Class Type (e.g. Physics)"} helperText={bulk?"For example Math or Physics. Leave blank to infer.":undefined} onBlur={()=>pick(f.class_type)}/>}/></Stack>
+   {!bulk&&<>
+   <Stack direction={{xs:"column",sm:"row"}} spacing={2}>
+    <TextField disabled={lock} label="Unit Number (optional)" placeholder="2.1" value={f.unit} onChange={set('unit')} sx={{width:150}}/>
+    <TextField required fullWidth disabled={lock} label="Lesson Name" helperText="The AI infers the unit name from your notes." value={f.lesson} onChange={set('lesson')}/></Stack>
+   <Stack direction={{xs:"column",sm:"row"}} spacing={2}>
+    <TextField fullWidth disabled={lock} label="Course Link (optional)" value={f.course_link} onChange={set('course_link')}/>
+    <TextField disabled={lock} label="Course ID (optional)" value={f.course_id} onChange={set('course_id')} sx={{width:180}}/></Stack>
+   </>}
+   <Button variant="contained" size="large" disabled={!ok||running} onClick={bulk?bulkGo:go}>{running?(act&&act.status==='review'?'Review your draft before saving':act&&act.status==='waiting'?'Waiting for your answer...':'Reading pages and writing your note...'):bulk?`Process ${files.length} unknown file(s)`:lock?`Add ${files.length||''} page(s) to this note`:`Create note from ${files.length||''} page(s)`}</Button>
+   {running&&<Stack direction="row" spacing={1} alignItems="center"><Box sx={{flex:1}}><LinearProgress/></Box>{act&&act.status!=='review'&&<Button size="small" color="error" onClick={killAct}>Stop</Button>}</Stack>}
+  </Stack></Paper>
+  {!running&&act&&(act.error?<Notice severity="error">{act.error}</Notice>:<Notice severity="success">{active.append?'Updated':'Created'} "{act.title}"</Notice>)}
+  {res&&<Notice severity="error">{res.msg}</Notice>}
+ </Stack>;
+}
+
+// Renders markdown (Obsidian flavour) and mermaid diagrams. Invalid diagrams fall back to showing their source.
+function Md({md,sid=0,nolink=false,onNote,highlightHeading='',highlightAll=false,documentPath=''}){
+ const ref=React.useRef(null);
+ const html=React.useMemo(()=>render(md||'',sid,nolink),[md,sid,nolink]);
+ useEffect(()=>{
+  const el=ref.current;if(!el)return;let cancelled=false;
+  el.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(h=>{h.id=h.textContent});
+  let selected=false,rank=0,target=null;
+  Array.from(el.children).forEach(child=>{
+   child.classList.remove('source-highlight');
+   if(/^H[1-6]$/.test(child.tagName)){
+    const matches=highlightHeading&&child.textContent.trim().replace(/\s+#+$/, '').toLowerCase()===highlightHeading.trim().toLowerCase();
+    if(matches){selected=true;rank=Number(child.tagName[1]);target=child}else if(selected&&Number(child.tagName[1])<=rank)selected=false;
+   }
+   if(selected||highlightAll)child.classList.add('source-highlight');
+  });
+  if(target&&typeof target.scrollIntoView==='function')target.scrollIntoView({block:'center',behavior:'smooth'});
+
+  el.querySelectorAll('pre > code').forEach(code=>{
+   if(!code.className.toLowerCase().split(/\s+/).includes('language-mermaid'))return;
+   const source=code.textContent.trim(),node=document.createElement('div');node.className='mermaid';node.textContent='Rendering diagram…';
+   code.parentElement.replaceWith(node);const id=`note-diagram-${++diagramId}`;
+   // Mermaid uses shared rendering state; serialize across all mounted viewers.
+   diagramQueue=diagramQueue.catch(()=>{}).then(async()=>{
+    if(cancelled)return;
+    try{
+     const {svg,bindFunctions}=await mermaid.render(id,source);
+     if(cancelled||!node.isConnected)return;
+     node.innerHTML=DOMPurify.sanitize(svg,{USE_PROFILES:{html:true,svg:true,svgFilters:true},ADD_TAGS:['foreignObject']});
+     bindFunctions?.(node);
+    }catch(error){
+     document.getElementById('d'+id)?.remove();
+     if(cancelled||!node.isConnected)return;
+     node.className='diagram-error';node.textContent='';
+     const message=document.createElement('div');message.textContent='Diagram could not render. Edit its Mermaid source below.';
+     const details=document.createElement('details'),label=document.createElement('summary'),pre=document.createElement('pre');
+     label.textContent='Mermaid source and error';pre.textContent=source+'\n\n'+String(error.message||error);details.append(label,pre);node.append(message,details);
+    }
+   });
+  });
+  return()=>{cancelled=true};
+ },[html,highlightHeading,highlightAll]);
+ const click=e=>{
+  const a=e.target.closest('a');if(!a)return;
+  if(a.dataset.note){e.preventDefault();if(a.dataset.note.includes('/')||!onNote)window.dispatchEvent(new CustomEvent('vault-open',{detail:{path:a.dataset.note,heading:a.dataset.heading}}));else onNote(a.dataset.note,a.dataset.heading);return}
+  const href=a.getAttribute('href')||'';
+  if(!/^[a-z][a-z0-9+.-]*:/i.test(href)&&!href.startsWith('/')&&/\.md(?:#.*)?$/i.test(href)){
+   e.preventDefault();const target=new URL(href,'https://vault.invalid/'+documentPath);window.dispatchEvent(new CustomEvent('vault-open',{detail:{path:decodeURIComponent(target.pathname.slice(1)),heading:decodeURIComponent(target.hash.slice(1))}}));return;
+  }
+  const heading=a.dataset.heading||(a.getAttribute('href')?.startsWith('#')?decodeURIComponent(a.getAttribute('href').slice(1)):'');
+  if(heading){const target=Array.from(ref.current.querySelectorAll('[id]')).find(h=>h.id===heading||h.id.toLowerCase().replace(/\s+/g,'-')===heading);if(target){e.preventDefault();target.scrollIntoView({block:'start',behavior:'smooth'})}}
+ };
+ return <Box ref={ref} onClick={click} sx={mdSx} dangerouslySetInnerHTML={{__html:html}}/>;
+}
+
+// AI outputs are JSON; show them as readable markdown (with a Raw toggle)
+const RICH=['output','thinking','guidance'];
+const aiMd=v=>{if(typeof v!=='string')return '```json\n'+JSON.stringify(v,null,1)+'\n```';
+ try{const o=JSON.parse(v);if(o&&typeof o==='object'){
+  if(o.body!==undefined)return `**${o.title||''}**\n\n*${o.summary||''}*\n\n${o.body}\n\n`+((o.links||[]).map(l=>`- [[${l.target}]] - ${l.how}`).join('\n'));
+  if(o.big_ideas)return o.big_ideas.map(i=>`- **${i.name}** connects to *${i.connects_to}*: ${i.how}\n  - evidence: ${i.evidence}`).join('\n')+((o.questions||[]).length?'\n\n**Questions:**\n'+o.questions.map(q=>'- '+q).join('\n'):'');
+  if('approved' in o)return `**${o.approved?'Approved':'Rejected'}**\n\n`+[...(o.issues||[]),...(o.questions||[])].map(i=>'- '+i).join('\n');
+  if('answer' in o)return o.answer;if('question' in o)return o.question;
+  if('resolved' in o)return `**${o.resolved?'Resolved':'Not resolved'}**\n\n${o.instructions||''}`;
+  return '```json\n'+JSON.stringify(o,null,1)+'\n```'}}catch(e){}
+ return v};
+function Field({k,v}){
+ const [raw,setRaw]=useState(false),rich=RICH.includes(k);
+ return <Box sx={{mb:1}}><Stack direction="row" alignItems="center"><Typography variant="caption" color="secondary" sx={{flexGrow:1}}>{k}</Typography>
+   {rich&&<Button size="small" onClick={()=>setRaw(!raw)}>{raw?'Rendered':'Raw'}</Button>}</Stack>
+  {k==='changes'?<Changes text={v}/>:rich&&!raw?<Box sx={{p:1,borderRadius:1,bgcolor:'rgba(0,0,0,.18)',maxHeight:420,overflow:'auto'}}><Md md={aiMd(v)} nolink/></Box>
+   :<Box component="pre" sx={pre}>{typeof v==='string'?v:JSON.stringify(v,null,1)}</Box>}</Box>;
+}
+
+function VaultBrowser(){
+ const [doc,setDoc]=useState(null),[error,setError]=useState(''),[history,setHistory]=useState([]),[loading,setLoading]=useState(false);
+ const request=React.useRef(0);
+ const open=async(path,heading='',back=false)=>{const token=++request.current;setLoading(true);setError('');try{const next=await api('/api/vault/document?path='+encodeURIComponent(path));if(token!==request.current)return;if(!back&&doc)setHistory(old=>[...old,doc]);setDoc({...next,heading})}catch(e){if(token===request.current)setError(e.message)}finally{if(token===request.current)setLoading(false)}};
+ useEffect(()=>{const follow=e=>open(e.detail.path,e.detail.heading);window.addEventListener('vault-open',follow);return()=>window.removeEventListener('vault-open',follow)},[doc]);
+ const close=()=>{request.current++;setDoc(null);setError('');setHistory([]);setLoading(false)};
+ return <Dialog open={!!doc||loading||!!error} onClose={close} fullWidth maxWidth="lg"><DialogTitle>{doc?.title||'Big Ideas'}</DialogTitle><DialogContent dividers>{loading&&<LinearProgress/>}{error&&<Notice severity="error">{error}</Notice>}{doc&&<Md md={doc.body} documentPath={doc.path} highlightHeading={doc.heading} onNote={(path,heading)=>open(path,heading)}/>}</DialogContent><DialogActions>{history.length>0&&<Button onClick={()=>{const previous=history[history.length-1];request.current++;setHistory(old=>old.slice(0,-1));setDoc(previous);setLoading(false);setError('')}}>Back</Button>}<Button onClick={close}>Close</Button></DialogActions></Dialog>;
+}
+
+function Viewer({d,sessions,setSel,toLog,onDelete,focusHeading='',focusAll=false}){
+ const onNote=n=>{const r=sessions.find(x=>x.title===n);if(r)setSel(r.id)};
+ return <Box>
+  <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap sx={{mb:1}}>
+   <Typography variant="h6" sx={{flexGrow:1}}>{d.title}</Typography>
+   <Button variant="contained" size="small" href={'obsidian://open?path='+encodeURIComponent(d.abs_path)}>Open in Obsidian</Button>
+   {d.pdfs.map((p,i)=><Button key={p} size="small" variant="outlined" target="_blank" href={appUrl(`/api/review/session/${d.id}/pdf/${encodeURIComponent(p)}`)}>{p.endsWith('.pdf')?'PDF':'MD'} {i+1}</Button>)}
+   <Button size="small" variant="outlined" href={studyLink([d.id],'guided')} onClick={e=>handoff(e,[d.id],'guided')}>Learn this note</Button>
+   <Button size="small" variant="outlined" href={studyLink([d.id],'quiz')} onClick={e=>handoff(e,[d.id],'quiz')}>Quiz me</Button>
+   <Button size="small" onClick={toLog}>AI log</Button>
+   <Button size="small" color="error" onClick={()=>onDelete(d)}>Delete</Button></Stack>
+  <Typography variant="caption" color="text.secondary">{d.class_type} / {d.course} / {d.unit?`Unit ${d.unit}: `:''}{d.lesson}</Typography>
+  <NoteStyleControl id={d.id}/><Md documentPath={d.note_path||''} md={d.note||'*The note file was not found in the current vault folder.*'} sid={d.id} onNote={onNote} highlightHeading={focusHeading} highlightAll={focusAll}/>
+ </Box>;
+}
+
+function Notes({sessions,sel,setSel,toLog,onDelete,focusHeading='',focusAll=false}){
+ const [d,setD]=useState(null),[col,setCol]=useState(false),[studyIds,setStudyIds]=useState([]),[query,setQuery]=useState(''),[closed,setClosed]=useState({});
+ useEffect(()=>{if(!sel){setD(null);return}api('/api/review/session/'+sel).then(setD).catch(()=>setD(null))},[sel,sessions]);
+ const tree={};
+ sessions.filter(r=>r.status==='done'&&r.title&&(!query||[r.title,r.course,r.class_type,r.unit].join(' ').toLowerCase().includes(query.toLowerCase()))).forEach(r=>{const c=tree[r.class_type]=tree[r.class_type]||{};(c[r.course]=c[r.course]||[]).push(r)});
+ return <Box sx={{display:'flex',height:'100%',gap:2}}>
+  <Box sx={{width:col?44:{xs:180,sm:260},flexShrink:0,overflow:'auto',borderRight:1,borderColor:'divider',pr:col?0:1,transition:'width .15s'}}>
+   <Button size="small" onClick={()=>setCol(!col)} aria-label="toggle sidebar" sx={{minWidth:0,mb:1}}>{col?'\u00BB':'\u00AB Hide'}</Button>
+   {!col&&<Box>
+   <TextField fullWidth label="Search Notes" value={query} onChange={e=>setQuery(e.target.value)} sx={{mb:2}}/>
+   {!!studyIds.length&&<Stack spacing={1} sx={{mb:2}}><Typography variant="caption">{studyIds.length} notes selected</Typography><Button size="small" variant="outlined" href={studyLink(studyIds,'guided')} onClick={e=>handoff(e,studyIds,'guided')}>Learn selected</Button><Button size="small" variant="outlined" href={studyLink(studyIds,'quiz')} onClick={e=>handoff(e,studyIds,'quiz')}>Quiz selected</Button></Stack>}
+   {!Object.keys(tree).length&&<Typography variant="body2" color="text.secondary">{query?'No matching notes.':'No notes yet.'}</Typography>}
+   {Object.entries(tree).map(([ct,cs])=><Box key={ct} sx={{mb:1}}>
+    <Button fullWidth sx={{justifyContent:'start',textAlign:'left'}} aria-expanded={!!query||!closed[ct]} onClick={()=>setClosed(p=>({...p,[ct]:!p[ct]}))}>{query||!closed[ct]?'▾':'▸'} {ct}</Button>
+    {(query||!closed[ct])&&Object.entries(cs).map(([co,rs])=><Box key={co} sx={{pl:1}}>
+     <Button fullWidth size="small" sx={{justifyContent:'start',textAlign:'left',color:'text.secondary'}} aria-expanded={!!query||!closed[ct+'/'+co]} onClick={()=>setClosed(p=>({...p,[ct+'/'+co]:!p[ct+'/'+co]}))}>{query||!closed[ct+'/'+co]?'▾':'▸'} {co}</Button>
+     {(query||!closed[ct+'/'+co])&&rs.map(r=><ListItemButton dense key={r.id} selected={r.id===sel} onClick={()=>setSel(r.id)} sx={{pl:1.5,borderRadius:1}}>
+      <Checkbox size="small" checked={studyIds.includes(r.id)} inputProps={{'aria-label':'Use '+r.title+' for study'}} onClick={e=>e.stopPropagation()} onChange={e=>setStudyIds(p=>e.target.checked?[...p,r.id]:p.filter(id=>id!==r.id))}/>
+      <ListItemText primary={r.title} secondary={r.unit?'Unit '+r.unit:''} primaryTypographyProps={{fontSize:14}}/></ListItemButton>)}
+    </Box>)}</Box>)}
+   </Box>}
+  </Box>
+  <Box sx={{flex:1,overflow:'auto',minWidth:0}}>
+   {d&&d.id===sel?<Viewer key={d.id} d={d} sessions={sessions} setSel={setSel} toLog={toLog} onDelete={onDelete} focusHeading={focusHeading} focusAll={focusAll}/>:<EmptyState title="Your notes, connected" detail="Select a note to read it here, or upload your first set of pages to get started."/>}
+  </Box></Box>;
+}
+
+function NoteText({note,focusHeading}){const lines=String(note).split('\n');let active=false,level=0;const target=String(focusHeading||'').trim().toLowerCase();return <Box component="pre" sx={{...pre,whiteSpace:'pre-wrap'}}>{lines.map((line,i)=>{const m=/^(#{1,6})\s+(.+)$/.exec(line);if(m){if(target&&m[2].trim().toLowerCase()===target){active=true;level=m[1].length}else if(active&&m[1].length<=level)active=false}return <Box component="span" key={i} sx={active?{display:'inline',backgroundColor:'rgba(255,213,79,.24)',color:'warning.light',borderRadius:0,boxShadow:'0 0 0 2px rgba(255,213,79,.24)'}:{}}>{line+'\n'}</Box>})}</Box>}
+function Review({sessions,refresh,sel,setSel,onDelete,focusHeading=''}){
+ const [path,setPath]=useState([]),[d,setD]=useState(null),[tab,setTab]=useState(0),[sourceMode,setSourceMode]=useState('transcript'),[g,setG]=useState(''),[busy,setBusy]=useState(false),[err,setErr]=useState('');
+ const [ct,co]=path;
+ const [cleared,setCleared]=useState('');
+ const clearLogs=async()=>{setErr('');setCleared('');setBusy(true);
+  try{const result=await api(`/api/review/session/${d.id}/logs`,{method:'DELETE'});
+   if(d){setD({...d,events:[],guidance:''});setG('')}
+   setCleared(`AI log cleared for "${d.title||d.lesson}" (${result.cleared} entries).`);await refresh();
+  }catch(e){setErr(e.message)}finally{setBusy(false)}
+ };
+ const open=async id=>{setErr('');setTab(0);setG('');setD(await api('/api/review/session/'+id))};
+ useEffect(()=>{if(sel)open(sel).catch(e=>setErr(e.message));else setD(null)},[sel]);
+ // keep the open session's AI log live while it is running or waiting for you
+ const live=d?(sessions.find(x=>x.id===d.id)||{}).status:null;
+ useEffect(()=>{if(!d)return;const f=()=>api('/api/review/session/'+d.id).then(setD).catch(()=>{});
+  f();if(live!=='running'&&live!=='waiting')return;const t=setInterval(f,2000);return()=>clearInterval(t)},[d&&d.id,live]);
+ const rows=sessions.filter(r=>(!ct||r.class_type===ct)&&(!co||r.course===co));
+ const groups=k=>{const m={};rows.forEach(r=>{m[r[k]]=(m[r[k]]||0)+1});return Object.entries(m)};
+ const redo=async()=>{setBusy(true);setErr('');
+  try{await api(`/api/review/session/${d.id}/redo`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({guidance:g})});await open(d.id);refresh()}
+  catch(e){setErr(e.message)}setBusy(false)};
+ const chip=r=><Chip size="small" variant="outlined" color={r.status==='done'?'success':r.status==='failed'?'error':r.status==='review'?'warning':r.status==='running'?'primary':'default'} label={r.status==='review'?'Needs review':r.status==='done'?'Saved':r.status==='waiting'?'Needs input':r.status==='running'?'Processing':r.status==='failed'?'Needs attention':r.status}/>;
+ const back=()=>{setD(null);setSel(null)};
+ const kill=async id=>{setErr('');try{await api(`/api/review/session/${id}/kill`,{method:'POST'});await refresh();if(d)open(id).catch(()=>{})}catch(e){setErr(e.message)}};
+ const retry=async id=>{setErr('');try{await api(`/api/review/session/${id}/retry`,{method:'POST'});await refresh()}catch(e){setErr(e.message)}};
+ return <Box sx={{display:'flex',flexDirection:'column',height:'100%',minHeight:0}}>
+  <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap sx={{mb:2,flexShrink:0}}>
+   <Typography variant="subtitle1" fontWeight={650} sx={{flexGrow:1}}>AI activity</Typography>
+   <Chip label="All subjects" onClick={()=>{setPath([]);back()}}/>
+   {ct&&<Chip color="primary" label={ct} onClick={()=>{setPath([ct]);back()}}/>}
+   {co&&<Chip color="primary" label={co} onClick={()=>{setPath([ct,co]);back()}}/>}
+   <Button onClick={refresh}>Refresh</Button></Stack>
+  {cleared&&<Notice severity="success" sx={{mb:1}} onClose={()=>setCleared('')}>{cleared}</Notice>}
+  {err&&<Notice severity="error" sx={{mb:1}} onClose={()=>setErr('')}>{err}</Notice>}
+  <Box sx={{flex:1,minHeight:0,overflow:'auto',pr:.5}}>
+  {d?<Box>
+   <Button onClick={back}>&larr; Back</Button> {d.status==='failed'&&<Button onClick={()=>retry(d.id)}>Retry</Button>} {(d.status==='running'||d.status==='waiting')&&<Button color="warning" onClick={()=>kill(d.id)}>Stop processing</Button>} <Button color="error" onClick={()=>onDelete(d)}>Delete</Button>
+   <Typography variant="h6">{d.title||d.lesson} {chip(d)}</Typography>
+   <Typography variant="body2" color="text.secondary" gutterBottom>{d.class_type} / {d.course} / {d.unit?`Unit ${d.unit}: `:''}{d.lesson}</Typography>
+   {d.error&&<Notice severity="error" sx={{mb:1}}>{d.error}</Notice>}
+   <Tabs value={tab} onChange={(_,v)=>setTab(v)} sx={{mb:1}}><Tab label="AI Notes"/><Tab label="AI Transcription & Actual Upload"/><Tab label={`AI Log (${d.events.length})`}/></Tabs>
+   {tab===0&&<NoteText note={d.note||'(no note was written)'} focusHeading={focusHeading}/>}
+   {tab===1&&<Box sx={{height:600}}><SourcePreview sources={d.sources||[]} transcript={d.transcript}/></Box>}
+   {tab===2&&<Stack direction="row" alignItems="center" justifyContent="space-between" spacing={1} sx={{mb:2}}><Typography variant="body2" color="text.secondary">{d.events.length} entries for this note</Typography><Button variant="contained" size="small" sx={dangerButton} disabled={busy||['running','waiting'].includes(d.status)} onClick={clearLogs}>Clear AI Log</Button></Stack>}
+   {tab===2&&!d.events.length&&<EmptyState title="No AI log entries" detail="Prompts, model responses, and processing details for this note will appear here."/>}
+   {tab===2&&d.events.map((e,i)=>{const x=e.data||{};return <Accordion key={i} disableGutters><AccordionSummary>
+     <Chip size="small" label={e.kind} sx={{mr:1}} color={e.kind==='error'?'error':'default'}/><Typography>{x.actor||x.name||e.kind}{x.model?` - ${x.model}`:''}</Typography></AccordionSummary>
+     <AccordionDetails>{['input','context','guidance','thinking','output','changes'].map(k=>x[k]!==undefined&&x[k]!==''&&<Field key={k} k={k} v={x[k]}/>)}</AccordionDetails></Accordion>})}
+   {d.status==='done'&&<Paper variant="outlined" sx={{p:2,mt:2}}><Stack spacing={1}>
+    <Typography variant="subtitle2">Steer the AI for This Note</Typography><NoteStyleControl id={d.id}/>
+    <Typography variant="caption" color="text.secondary">The AI only rebuilds this note from your uploaded pages. Guidance can shift emphasis, but it will not answer questions, clarify, or add anything that is not on the pages.</Typography>
+    <TextField InputLabelProps={{shrink:true}} InputProps={{inputComponent:RichMarkdownControl}} multiline minRows={2} onKeyDown={e=>submitOnEnter(e,redo,!busy&&!!g.trim())} helperText="Enter to Submit · Shift+Enter for a New Line" value={g} onChange={e=>setG(e.target.value)} placeholder="e.g. emphasize the link between momentum and impulse"/>
+    {err&&<Notice severity="error">{err}</Notice>}
+    <Button variant="contained" disabled={busy} onClick={redo}>{busy?'Regenerating...':'Regenerate note'}</Button>
+    {busy&&<LinearProgress/>}</Stack></Paper>}
+  </Box>
+  :!sessions.length?<EmptyState title="A clear view of every draft" detail="Upload notes to see their prompts, sources, and processing history here."/>
+  :!ct?<List>{groups('class_type').map(([n,c])=><ListItemButton key={n} onClick={()=>setPath([n])}><ListItemText primary={'\uD83D\uDCC1 '+n} secondary={c+' session(s)'}/></ListItemButton>)}</List>
+  :!co?<List>{groups('course').map(([n,c])=><ListItemButton key={n} onClick={()=>setPath([ct,n])}><ListItemText primary={'\uD83D\uDCC1 '+n} secondary={c+' session(s)'}/></ListItemButton>)}</List>
+  :<List>{rows.map(r=><ListItemButton key={r.id} onClick={()=>setSel(r.id)}><ListItemText primary={r.title||r.lesson} secondary={`${r.unit?`Unit ${r.unit}: `:''}${r.lesson}`}/>{chip(r)}{r.status==='failed'&&<Button size="small" onClick={e=>{e.stopPropagation();retry(r.id)}} sx={{ml:1,minWidth:0}}>Retry</Button>}{(r.status==='running'||r.status==='waiting')&&<Button size="small" color="warning" onClick={e=>{e.stopPropagation();kill(r.id)}} sx={{ml:1,minWidth:0}}>Stop</Button>}<Button size="small" color="error" onClick={e=>{e.stopPropagation();onDelete(r)}} sx={{ml:1,minWidth:0}}>Delete</Button></ListItemButton>)}</List>}
+  </Box>
+ </Box>;
+}
+
+function Del({s,onClose,onDone}){
+ const [files,setFiles]=useState(true),[busy,setBusy]=useState(false),[err,setErr]=useState('');
+ const go=async()=>{setBusy(true);setErr('');try{await api(`/api/review/session/${s.id}?files=${files}`,{method:'DELETE'});onDone()}catch(e){setErr(e.message);setBusy(false)}};
+ return <Dialog open onClose={busy?undefined:onClose}><DialogTitle>Delete {s.title?`"${s.title}"`:'this session'}?</DialogTitle>
+  <DialogContent><Typography gutterBottom>This removes the session and its AI log from the review history.</Typography>
+   {s.title&&<FormControlLabel control={<Checkbox checked={files} onChange={e=>setFiles(e.target.checked)}/>} label="Also delete the note and its PDFs from the Obsidian vault"/>}
+   {err&&<Notice severity="error" sx={{mt:1}}>{err}</Notice>}</DialogContent>
+  <DialogActions><Button disabled={busy} onClick={onClose}>Cancel</Button><Button color="error" variant="contained" disabled={busy} onClick={go}>Delete</Button></DialogActions></Dialog>;
+}
+
+function Lessons({sessions}){
+ const [rows,setRows]=useState([]);
+ const load=()=>api('/api/lessons').then(setRows).catch(()=>{});
+ useEffect(()=>{load()},[sessions]);
+ const del=async id=>{await api('/api/lessons/'+id,{method:'DELETE'});load()};
+ return <Box>
+  <Typography variant="subtitle1">Lessons the AIs can look back on</Typography>
+  <Typography variant="caption" color="text.secondary" display="block" sx={{mb:1.5}}>Your edits include the original AI draft, your revision, and a change view. Human corrections are always saved in the lessons directory. Settings control whether the AI uses past lessons.</Typography>
+  {!rows.length&&<Typography color="text.secondary">Nothing saved yet.</Typography>}
+  {rows.map(r=><Paper key={r.id} variant="outlined" sx={{p:1.5,mb:1}}>
+   <Stack direction="row" spacing={1} alignItems="center" sx={{mb:.5}}>
+    <Chip size="small" color={r.confirmed?'primary':'default'} label={r.kind}/><Chip size="small" variant="outlined" label={r.stage}/>
+    <Typography variant="caption" color="text.secondary" sx={{flexGrow:1}}>{r.class_type} / {r.course}</Typography>
+    <Button size="small" color="error" onClick={()=>del(r.id)}>Delete</Button></Stack>
+   {r.kind==='user_edit'?<Stack spacing={1}>
+    {r.feedback&&<Typography sx={{whiteSpace:'pre-wrap'}}>{r.feedback}</Typography>}
+    <Typography variant="subtitle2">Changes you made to the AI's work</Typography>
+    <Changes text={r.changes}/>
+    <Accordion><AccordionSummary>AI draft</AccordionSummary><AccordionDetails><Md md={r.before} nolink/></AccordionDetails></Accordion>
+    <Accordion><AccordionSummary>Your revision</AccordionSummary><AccordionDetails><Md md={r.after} nolink/></AccordionDetails></Accordion>
+   </Stack>:
+   [['Validation concerns',r.issues],["AI #1's view",r.ai_view],['Legacy review note',r.moderator_note],['Your answer',r.user_input]].map(([l,v])=>v?<Box key={l} sx={{mb:.5}}>
+    <Typography variant="caption" color="secondary">{l}</Typography><Typography variant="body2" sx={{whiteSpace:'pre-wrap'}}>{v}</Typography></Box>:null)}
+  </Paper>)}</Box>;
+}
+
+function BigIdeas({sessions,onOpen}){
+ const [rows,setRows]=useState([]);
+ useEffect(()=>{api('/api/big_ideas').then(setRows).catch(()=>{})},[sessions]);
+ const groups={};rows.forEach(r=>{(groups[r.class_type]=groups[r.class_type]||[]).push(r)});
+ return <Box>
+  <Typography variant="subtitle1">Master list of big ideas</Typography>
+  <Typography variant="caption" color="text.secondary" display="block" sx={{mb:1.5}}>Ideas are shared across courses within each subject. Open an idea to see its collected content and links to every contributing note section. The subject index is saved as BigIdeas.md.</Typography>
+  {!rows.length&&<Typography color="text.secondary">No big ideas yet.</Typography>}
+  {Object.entries(groups).map(([ct,rs])=><Box key={ct} sx={{mb:2}}>
+   <Button size="small" onClick={()=>window.dispatchEvent(new CustomEvent('vault-open',{detail:{path:ct+'/BigIdeas'}}))}>{'\uD83D\uDCC1 '+ct}</Button>
+   {rs.map(r=><Paper key={r.id} variant="outlined" sx={{p:1,mb:1}}>
+    <Button size="small" onClick={()=>window.dispatchEvent(new CustomEvent('vault-open',{detail:{path:r.concept_path}}))}>{r.name}</Button>
+    {r.summary&&<Typography variant="body2" color="text.secondary">{r.summary}</Typography>}
+    <Box sx={{mt:.5}}>{(r.sources||[]).map((source,i)=><Chip key={source.path+':'+i} size="small" label={source.title} sx={{mr:.5,mb:.5}} onClick={()=>window.dispatchEvent(new CustomEvent('vault-open',{detail:{path:source.path,heading:source.heading}}))}/>)}</Box></Paper>)}</Box>)}
+ </Box>;
+}
+
+// the right-hand section: swap between the note viewer and the prompt/AI-log viewer
+function Right({sessions,refresh,onHide}){
+ const focusParams=new URLSearchParams(location.search),initialNote=Number(focusParams.get('note_id'))||null;
+ const [mode,setMode]=useState('notes'),[sel,setSel]=useState(initialNote),[del,setDel]=useState(null),[focusHeading,setFocusHeading]=useState(focusParams.get('heading')||''),[focusId,setFocusId]=useState(initialNote);
+ useEffect(()=>{const f=e=>{if(e.origin!==location.origin||e.source!==window.parent||e.data?.type!=='notes-focus')return;setSel(Number(e.data.note_id));setMode('notes');setFocusId(Number(e.data.note_id));setFocusHeading(e.data.heading||'')};window.addEventListener('message',f);return()=>window.removeEventListener('message',f)},[]);
+ return <Box sx={{display:'flex',flexDirection:'column',height:'100%',minHeight:0}}>
+  <Stack direction="row" justifyContent="space-between" alignItems="center" sx={{mb:1.5}}>
+   <Tabs value={mode} onChange={(_,v)=>setMode(v)} variant="scrollable" scrollButtons="auto" allowScrollButtonsMobile sx={{minWidth:0,flex:1}}>
+    <Tab value="notes" label="Notes"/><Tab value="log" label="AI Log"/><Tab value="lessons" label="Lessons"/><Tab value="ideas" label="Big ideas"/>
+   </Tabs>
+   <Tooltip title="Collapse workspace"><Button size="small" onClick={onHide} aria-label="Collapse workspace" sx={{minWidth:36}}>»</Button></Tooltip></Stack>
+  <Box sx={{flex:1,minHeight:0,overflow:(mode==='notes'||mode==='log')?'hidden':'auto'}}>
+   {mode==='notes'?<Notes sessions={sessions} sel={sel} setSel={setSel} toLog={()=>setMode('log')} onDelete={setDel} focusHeading={sel===focusId?focusHeading:''} focusAll={sel===focusId&&!focusHeading}/>
+    :mode==='lessons'?<Lessons sessions={sessions}/>
+    :mode==='ideas'?<BigIdeas sessions={sessions} onOpen={n=>{const r=sessions.find(x=>x.title===n);if(r){setSel(r.id);setMode('notes')}}}/>
+    :<Review sessions={sessions} refresh={refresh} sel={sel} setSel={setSel} onDelete={setDel} focusHeading={focusHeading}/>}</Box>
+  {del&&<Del s={del} onClose={()=>setDel(null)} onDone={()=>{setDel(null);setSel(null);refresh()}}/>}</Box>;
+}
+
+function Changes({text}){
+ if(!text)return <Typography color="text.secondary">No changes to the AI draft.</Typography>;
+ return <Box component="pre" sx={{...pre,maxHeight:'none'}}>{text.split('\n').map((line,i)=><Box component="span" key={i} sx={{display:'block',color:line.startsWith('+')?'success.light':line.startsWith('-')?'error.light':'text.primary'}}>{line||' '}</Box>)}</Box>;
+}
+const reviewSnapshot=e=>`# ${e.title}\nSummary: ${e.summary}\nUnit name: ${e.unit_name}\n\n${e.body}`;
+const lineChanges=(before,after)=>{
+ if(before===after)return '';
+ const a=before.split('\n'),b=after.split('\n');let start=0,ae=a.length,be=b.length;
+ while(start<Math.min(ae,be)&&a[start]===b[start])start++;
+ while(ae>start&&be>start&&a[ae-1]===b[be-1]){ae--;be--}
+ const x=a.slice(start,ae),y=b.slice(start,be),width=y.length+1;
+ const lines=['--- AI draft','+++ Human revision',`@@ starting at line ${start+1} @@`];
+ if((x.length+1)*width>1000000)return [...lines,...x.map(l=>'-'+l),...y.map(l=>'+'+l)].join('\n');
+ const dp=new Uint32Array((x.length+1)*width);
+ for(let i=x.length-1;i>=0;i--)for(let j=y.length-1;j>=0;j--)dp[i*width+j]=x[i]===y[j]?1+dp[(i+1)*width+j+1]:Math.max(dp[(i+1)*width+j],dp[i*width+j+1]);
+ let i=0,j=0;
+ while(i<x.length||j<y.length){
+  if(i<x.length&&j<y.length&&x[i]===y[j]){lines.push(' '+x[i]);i++;j++}
+  else if(i<x.length&&(j===y.length||dp[(i+1)*width+j]>=dp[i*width+j+1]))lines.push('-'+x[i++]);
+  else lines.push('+'+y[j++]);
+ }
+ return lines.join('\n');
+};
+
+function SourcePreview({sources=[],transcript=''}){
+ const [selected,setSelected]=useState(0),[text,setText]=useState(''),[err,setErr]=useState(''),[raw,setRaw]=useState(false),[view,setView]=useState('upload');
+ const source=sources[selected];
+ useEffect(()=>{setSelected(0)},[sources.map(s=>s.url).join('|')]);
+ useEffect(()=>{setErr('');setText('');if(view!=='upload'||!source||!source.type.startsWith('text/'))return;const controller=new AbortController();appFetch(source.url,{signal:controller.signal}).then(r=>{if(!r.ok)throw new Error('Could not load the original file');return r.text()}).then(setText).catch(e=>{if(e.name!=='AbortError')setErr(e.message)});return()=>controller.abort()},[source?.url,view]);
+ return <Stack sx={{height:'100%',minHeight:0}} spacing={1}>
+ <Typography variant="subtitle1">AI Transcription & Actual Upload</Typography>
+ <ToggleButtonGroup exclusive fullWidth size="small" value={view} onChange={(_,v)=>v&&setView(v)} aria-label="Compare uploaded source and AI transcription"><ToggleButton value="transcript">AI Transcription</ToggleButton><ToggleButton value="upload">Actual Upload</ToggleButton></ToggleButtonGroup>
+ {view==='transcript'?<Box sx={{flex:1,minHeight:250,overflow:'auto'}}><Box component="pre" sx={{...pre,maxHeight:'none',whiteSpace:'pre-wrap'}}>{transcript||'No AI transcription was saved for this note.'}</Box></Box>:<>
+ {!!sources.length&&<Stack direction="row" spacing={1}><TextField select size="small" fullWidth label="Uploaded Source" value={selected} onChange={e=>setSelected(Number(e.target.value))}>{sources.map((item,i)=><MenuItem key={item.url} value={i}>{item.name}</MenuItem>)}</TextField>{source&&<Button href={appUrl(source.url)} target="_blank" rel="noopener noreferrer">Open Original</Button>}</Stack>}
+ {err&&<Notice severity="warning">{err}</Notice>}
+ <Box sx={{flex:1,minHeight:300,overflow:'auto'}}>
+ {!source?<Notice severity="info">No original upload is available for this older note. Its saved transcription is still available.</Notice>:source.type==='application/pdf'?<Box component="iframe" title={'Actual upload: '+source.name} src={appUrl(source.url)} sx={{width:'100%',height:'100%',minHeight:450,border:0}}/>:source.type.startsWith('image/')?<Box component="img" alt={source.name} src={appUrl(source.url)} onError={()=>setErr('The browser could not display this image')} sx={{maxWidth:'100%',height:'auto'}}/>:source.type.startsWith('text/')?<><Button size="small" onClick={()=>setRaw(!raw)}>{raw?'Show Markdown Preview':'Show Original Text'}</Button>{raw?<Box component="pre" sx={{...pre,maxHeight:'none'}}>{text||'Loading source…'}</Box>:<Md md={text} nolink/>}</>:<Button href={appUrl(source.url)} target="_blank" rel="noopener noreferrer">Open Uploaded File</Button>}
+ </Box></>}
+ </Stack>;
+}
+function NoteStyleControl({id}){
+ const [value,setValue]=useState(''),[error,setError]=useState(''),[ready,setReady]=useState(false);
+ useEffect(()=>{setReady(false);api(`/api/review/session/${id}/style`).then(v=>{setValue(v.note_style);setReady(true)}).catch(e=>setError(e.message))},[id]);
+ const choose=async e=>{const style=e.target.value;setError('');try{await api(`/api/review/session/${id}/style`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({note_style:style})});setValue(style)}catch(e){setError(e.message)}};
+ return <Box sx={{my:1}}><TextField fullWidth select label="Note Style for This Note" disabled={!ready} value={value} onChange={choose} helperText={error||'Saved for this note. Applied when you regenerate it or add more pages.'} error={!!error}><MenuItem value="">Settings Default</MenuItem><MenuItem value="bullet_points">Bullet Points</MenuItem><MenuItem value="text_chunks">Text Chunks</MenuItem><MenuItem value="hybrid">Combined · Light Text and Bullets</MenuItem></TextField></Box>;
+}
+
+function HumanReview({id,refresh}){
+ const [q,setQ]=useState(null),[edit,setEdit]=useState(null),[tab,setTab]=useState(0),[busy,setBusy]=useState(false),[err,setErr]=useState(''),[saved,setSaved]=useState('');
+ const load=()=>api(`/api/review/session/${id}/human`).then(j=>{setQ(j);setEdit(j.edits);setErr('')}).catch(e=>setErr(e.message));
+ useEffect(()=>{setQ(null);setEdit(null);load()},[id]);
+ useEffect(()=>{
+  if(!edit||busy)return;setSaved('Saving review…');const controller=new AbortController();
+  const timer=setTimeout(()=>api(`/api/review/session/${id}/human`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(edit),signal:controller.signal})
+   .then(()=>setSaved('Review saved')).catch(e=>{if(e.name!=='AbortError')setSaved('Review could not autosave: '+e.message)}),600);
+  return()=>{clearTimeout(timer);controller.abort()};
+ },[edit,id,busy]);
+ const set=k=>e=>setEdit(p=>({...p,[k]:e.target.value}));
+ const finish=async action=>{
+  setBusy(true);setErr('');
+  try{await api(`/api/review/session/${id}/human`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...edit,action})});if(action==='approve'&&EMBEDDED)window.parent.postMessage({type:'notes-tour-reviewed'},location.origin);await refresh()}
+  catch(e){setErr(e.message)}finally{setBusy(false)}
+ };
+ const diff=q&&edit?lineChanges(reviewSnapshot(q.draft),reviewSnapshot(edit)):'';
+ return <Dialog open maxWidth={false} scroll="paper" PaperProps={{sx:{width:'98vw',height:'96vh',maxWidth:'none'}}}>
+  <DialogTitle>Review your notes before saving{q?` — ${q.class_type} / ${q.course}`:''}</DialogTitle>
+  <DialogContent dividers sx={{display:'flex',flexDirection:'column',minHeight:0,gap:1,p:2}}>
+   {err&&<Notice severity="error">{err}{!q&&<Button onClick={load}>Reload review</Button>}</Notice>}
+   {!q||!edit?<LinearProgress/>:<>
+    <Typography variant="body2" color="text.secondary">Compare the source with the draft. Edit the Markdown directly, check the preview, and save when ready. Your edits and feedback are saved as lessons for future notes.</Typography>
+    <Box sx={{display:'grid',gridTemplateColumns:{xs:'1fr',md:'minmax(0,1fr) minmax(0,1fr)'},gap:2,flex:1,minHeight:0,overflow:'auto'}}>
+     <Paper variant="outlined" sx={{p:2,minWidth:0,minHeight:400,height:'100%',boxSizing:'border-box'}}><SourcePreview sources={q.sources} transcript={q.transcript}/></Paper>
+     <Stack spacing={1.5} sx={{minWidth:0,minHeight:400,height:'100%',p:2,border:'1px solid',borderColor:'divider',borderRadius:'12px',boxSizing:'border-box'}}>
+      <Stack direction="row" spacing={1}>
+       <TextField size="small" fullWidth label="Note title" disabled={busy||q.locked_title} value={edit.title} onChange={set('title')}/>
+       <TextField size="small" fullWidth label="Unit name" disabled={busy} value={edit.unit_name} onChange={set('unit_name')}/>
+      </Stack>
+      <Typography variant="subtitle1">AI Notes</Typography><TextField size="small" fullWidth label="Summary" disabled={busy} value={edit.summary} onChange={set('summary')}/>
+      <Tabs value={tab} onChange={(_,v)=>setTab(v)} variant="scrollable" scrollButtons="auto"><Tab label="Edit notes"/><Tab label="Preview"/><Tab label="Your changes"/></Tabs>
+      <Box sx={{flex:1,minHeight:200,overflow:'auto'}}>
+       {tab===0?<Box component="textarea" aria-label="Edit AI notes in Markdown" disabled={busy} value={edit.body} onChange={set('body')} spellCheck={false}
+        sx={{width:'100%',height:'100%',minHeight:200,boxSizing:'border-box',resize:'none',font:'14px/1.6 ui-monospace,monospace',bgcolor:'background.default',color:'text.primary',border:'1px solid',borderColor:'divider',borderRadius:'8px',p:1.5}}/>
+        :tab===1?<Md md={edit.body} sid={id}/>:<Changes text={diff}/>}
+      </Box>
+      <TextField InputLabelProps={{shrink:true}} InputProps={{inputComponent:RichMarkdownControl}} multiline minRows={2} label="What should the AI learn from your edits? (optional)" disabled={busy} value={edit.feedback} onChange={set('feedback')}/>
+      <Typography variant="caption" color="text.secondary">{saved}</Typography>
+     </Stack>
+    </Box>
+   </>}
+  </DialogContent>
+  <DialogActions>
+   <Button color="error" disabled={busy||!edit} onClick={()=>finish('discard')}>Discard draft</Button>
+   <Button variant="contained" disabled={busy||!edit||!edit.body.trim()||!edit.title.trim()} onClick={()=>finish('approve')}>{busy?'Saving…':'Save reviewed note'}</Button>
+  </DialogActions>
+ </Dialog>;
+}
+
+function Ask({id,refresh}){
+ const [q,setQ]=useState(null),[a,setA]=useState(''),[busy,setBusy]=useState(false);
+ useEffect(()=>{let on=true;const f=()=>api(`/api/review/session/${id}/question`).then(j=>{if(on)setQ(j.question?j:null)}).catch(()=>{});
+  f();const t=setInterval(f,1500);return()=>{on=false;clearInterval(t)}},[id]);
+ const [submitted,setSubmitted]=useState('');
+ const send=async(action,txt)=>{if(busy)return;setSubmitted(txt);setBusy(true);
+  try{await api(`/api/review/session/${id}/answer`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({answer:txt,action})});setA('');setQ(null);refresh()}catch(e){}
+  setBusy(false)};
+ const acts=(q&&q.actions&&q.actions.length)?q.actions:[{id:'send',label:'Send answer'},{id:'skip',label:'Skip (no answer)'}];
+ const secs=(q&&q.sections)||[];
+ const big=secs.find(s=>s.scroll||s.collapsed);
+ const rest=secs.filter(s=>s!==big);
+ return <Dialog open={!!q} maxWidth={false} scroll="paper" PaperProps={{sx:{width:'96vw',height:'92vh',maxWidth:'none'}}}>
+  <DialogTitle>{q&&q.page>0?`The AI needs help reading page ${q.page} of ${q.total}`:'The AI needs your input'}</DialogTitle>
+  <DialogContent dividers sx={{p:0,display:'flex',overflow:'hidden'}}>
+   <Box sx={{display:'flex',flex:1,minHeight:0,minWidth:0}}>
+    <Box sx={{width:big?'38%':'100%',flexShrink:0,overflow:'auto',p:2,borderRight:big?1:0,borderColor:'divider'}}>
+     {q&&(secs.length?<Notice severity="warning" sx={{mb:2}}>{q.question}</Notice>:<Typography gutterBottom sx={{whiteSpace:'pre-wrap'}}>{q.question}</Typography>)}
+     {rest.map((s,i)=><Paper key={i} variant="outlined" sx={{p:1.5,mb:1.5,borderLeft:'4px solid',borderLeftColor:i===1?'secondary.main':'primary.main'}}>
+       <Typography variant="overline" color="secondary" display="block">{s.label}</Typography><Md md={s.text} nolink/></Paper>)}
+     {q&&q.page>0&&<Box component="img" src={appUrl(`/api/review/session/${id}/page?p=${q.page}&q=${encodeURIComponent(q.question)}`)} sx={{maxWidth:'100%',maxHeight:'60vh',borderRadius:1,display:'block',mb:2}}/>}
+     {submitted&&<Paper variant="outlined" sx={{px:1.5,py:.5,mb:1,borderRadius:'8px'}}><Typography variant="caption">You</Typography><Typography sx={{whiteSpace:'pre-wrap'}}>{submitted}</Typography></Paper>}{busy&&<LinearProgress sx={{mb:1}}/>}
+     <TextField disabled={busy} autoFocus fullWidth multiline minRows={3} label={secs.length?'Why is this the right call, how does it work, or what is wrong with it? (optional)':'Your answer'} helperText="Enter to Send · Shift+Enter for a New Line" value={a} onChange={e=>setA(e.target.value)}
+      onKeyDown={e=>submitOnEnter(e,()=>{const p=acts.find(x=>x.id==='send')||acts.find(x=>x.id==='accept')||acts[0];if(p.id!=='send'||a.trim())send(p.id,p.id==='skip'?'':a)},!busy)}/>
+    </Box>
+    {big&&<Box sx={{flex:1,minWidth:0,overflow:'auto',p:2}}>
+     <Typography variant="overline" color="secondary" display="block">{big.label}</Typography><Md md={big.text} nolink/></Box>}
+   </Box></DialogContent>
+  <DialogActions>{acts.map(x=><Button key={x.id} disabled={busy||(x.id==='send'&&!a.trim())} variant={x.id==='send'||x.id==='accept'?'contained':'text'} color={x.id==='discard'?'error':x.id==='accept'?'secondary':'primary'}
+    onClick={()=>send(x.id,x.id==='skip'?'':a)}>{x.label}</Button>)}</DialogActions></Dialog>;
+}
+
+function App(){
+ const [s,setS]=useState(null),[open,setOpen]=useState(false),[sessions,setSessions]=useState([]),[ver,setVer]=useState(0),[status,setStatus]=useState({}),[side,setSide]=useState(true),[uploadOpen,setUploadOpen]=useState(true);
+ const refresh=()=>api('/api/review/sessions').then(j=>setSessions(p=>JSON.stringify(p)===JSON.stringify(j)?p:j)).catch(()=>{});
+ useEffect(()=>{api('/api/settings').then(setS);refresh();const t=setInterval(refresh,3000);return()=>clearInterval(t)},[]);
+ // every settings change is saved to the server (data/config.json) after a short pause
+ useEffect(()=>{if(!s)return;setStatus({saving:true});
+  const t=setTimeout(()=>api('/api/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(s)})
+   .then(()=>{setStatus({});setVer(v=>v+1);refresh()}).catch(e=>setStatus({err:e.message})),600);
+  return()=>clearTimeout(t)},[s]);
+ if(s)window.__LEARNING_URL__=s.learning_url;
+ const colors=EMBEDDED?{background:'#131314',paper:'#1e1f20',primary:'#a8c7fa',secondary:'#d0bcff',text:'#e3e3e3'}:s?s.colors:DC;
+ const theme=React.useMemo(()=>mk(colors),[JSON.stringify(colors)]);
+ if(!s)return <ThemeProvider theme={theme}><CssBaseline/></ThemeProvider>;
+ return <ThemeProvider theme={theme}><CssBaseline/><VaultBrowser/>
+  {!EMBEDDED&&<AppBar position="static" color="transparent" elevation={0} sx={{borderBottom:1,borderColor:'divider',bgcolor:'background.paper'}}><Toolbar sx={{minHeight:'72px !important',gap:2,px:{xs:2,md:3}}}>
+   <Box aria-hidden="true" sx={{width:36,height:36,borderRadius:2,bgcolor:'primary.main',color:'background.default',display:'grid',placeItems:'center',fontSize:24,fontWeight:700}}>N</Box>
+   <Box sx={{flexGrow:1}}><Typography variant="h6" sx={{lineHeight:1.2}}>NoteSorter</Typography><Typography variant="caption" color="text.secondary">A home for your ideas</Typography></Box>
+   <Chip variant="outlined" size="small" label={`${sessions.filter(r=>r.status==='done').length} saved`} sx={{display:{xs:'none',sm:'flex'}}}/>
+   {sessions.some(r=>r.status==='review')&&<Chip size="small" variant="outlined" color="warning" label={`${sessions.filter(r=>r.status==='review').length} to review`}/>}
+   <Tooltip title="Settings"><IconButton color="primary" onClick={()=>setOpen(true)} aria-label="settings" sx={{fontSize:23,border:'1px solid',borderColor:'divider',borderRadius:2,width:38,height:38}}>&#9881;</IconButton></Tooltip>
+  </Toolbar></AppBar>}
+  {sessions.some(r=>r.status==='waiting')?<Ask id={sessions.find(r=>r.status==='waiting').id} refresh={refresh}/>:sessions.some(r=>r.status==='review')?<HumanReview key={sessions.find(r=>r.status==='review').id} id={sessions.find(r=>r.status==='review').id} refresh={refresh}/>:null}
+  <Drawer anchor="right" open={open} onClose={()=>setOpen(false)}><Settings s={s} setS={setS} status={status}/></Drawer>
+  <Box sx={{display:'grid',gridTemplateColumns:side?{xs:'minmax(0,1fr)',lg:uploadOpen?'minmax(350px,.85fr) minmax(0,1.15fr)':'48px minmax(0,1fr)'}:{xs:'minmax(0,1fr)',lg:uploadOpen?'minmax(0,1fr) 48px':'48px minmax(0,1fr)'},gridTemplateRows:{xs:'auto minmax(500px,70vh)',lg:'minmax(0,1fr)'},gap:2.5,p:{xs:1.5,md:2.5},height:EMBEDDED?'100vh':'calc(100vh - 72px)',boxSizing:'border-box',overflow:'auto',maxWidth:1800,mx:'auto'}}>
+   <Paper variant="outlined" sx={{overflow:{xs:'visible',lg:'auto'},minWidth:0,p:uploadOpen?{xs:2,md:3}:.5,borderRadius:'12px',display:uploadOpen?'block':'flex',alignItems:'center',justifyContent:'center'}}><Button size="small" onClick={()=>setUploadOpen(!uploadOpen)} aria-expanded={uploadOpen} aria-label={uploadOpen?'Collapse Add Your Notes':'Expand Add Your Notes'} sx={{minWidth:0,mb:uploadOpen?1:0,...(!uploadOpen&&{width:36,height:36,p:0,fontSize:24,lineHeight:1,display:'flex',alignItems:'center',justifyContent:'center'})}}>{uploadOpen?'‹ Collapse Add Your Notes':'›'}</Button><Box sx={{display:uploadOpen?'block':'none'}}><Upload ver={ver} refresh={refresh} sessions={sessions}/></Box></Paper>
+   <Box sx={{minWidth:0,minHeight:0}}>
+    <Paper variant="outlined" sx={{display:side?'block':'none',height:'100%',overflow:'hidden',p:{xs:1.5,md:2.5},borderRadius:'12px',boxSizing:'border-box'}}><Right sessions={sessions} refresh={refresh} onHide={()=>setSide(false)}/></Paper>
+    {!side&&<Paper variant="outlined" sx={{height:'100%',display:'flex',alignItems:'center',justifyContent:'center'}}>
+     <Button size="small" onClick={()=>setSide(true)} aria-label="show notes panel" sx={{minWidth:0,width:36,height:36,p:0,fontSize:24,lineHeight:1}}>{'\u00AB'}</Button></Paper>}
+   </Box>
+  </Box></ThemeProvider>;
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script></body></html>

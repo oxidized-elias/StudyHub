@@ -1,0 +1,17 @@
+// Tests the Markdown/KaTeX pipeline; DOMPurify and browser SVG layout are outside this Node check.
+const fs=require('fs'),vm=require('vm'),assert=require('node:assert/strict');
+const load=(name,environment)=>{try{return require(process.env[environment]||name)}catch(e){throw new Error(`Install ${name} or set ${environment} to its local CommonJS runtime. ${e.message}`)}};
+const ctx={APP_BASE:'',marked:load('marked','MARKED_RUNTIME'),katex:load('katex','KATEX_RUNTIME'),DOMPurify:{sanitize:s=>s},mermaid:{initialize(){}},console};
+vm.createContext(ctx);
+const html=fs.readFileSync('web/index.html','utf8');const source=html.split('mermaid.initialize(')[1].split('\n// Render as the user types')[0];vm.runInContext('mermaid.initialize('+source+'\nglobalThis.renderMarkdown=render;',ctx);
+const render=md=>ctx.renderMarkdown(md,3,false);
+let result=render('> [!info]- Original\n> **Bold**\n>\n> - First\n> - Second\n');
+assert.match(result,/<details ><summary>Original<\/summary>/);assert.match(result,/<strong>Bold<\/strong>/);assert.match(result,/<ul>/);assert.doesNotMatch(result,/<p>\*\*Bold/);
+result=render('```txt\n[[Literal]]\n> [!info] Literal\n$x^2$\n```\n\n`[[Inline literal]]`\n\n~~~mermaid\nflowchart LR\nA --> B\n~~~');
+assert.match(result,/\[\[Literal\]\]/);assert.match(result,/\[\[Inline literal\]\]/);assert.match(result,/language-mermaid/);assert.doesNotMatch(result,/data-note=/);assert.doesNotMatch(result,/class="katex/);
+result=render('## Degree\n\n[[#Degree|Jump]] [[Polynomials|Other]] [[source.md]]\n\n$x^2$\n\n$$\nf(x)=x^2\n$$\n\n| A | B |\n|---|---|\n| 1 | 2 |');
+assert.match(result,/data-heading="Degree"/);assert.match(result,/data-note="Polynomials"/);assert.match(result,/session\/3\/pdf\/source.md/);assert.match(result,/class="katex"/);assert.match(result,/katex-display/);assert.match(result,/<table>/);
+result=render('\ufeff---\r\ntitle: Example\r\n---\r\n## Hello\r\n\r\n- [x] done\n');assert.doesNotMatch(result,/title: Example/);assert.match(result,/<h2>Hello/);assert.match(result,/type="checkbox"/);
+result=render('[[Other|<img src=x onerror=alert(1)>]]');assert.doesNotMatch(result,/<img/);assert.match(result,/&lt;img/);
+result=render('> [!note] Parent\n> - list\n>\n> > [!tip] Child\n> > **nested**\n');assert.match(result,/<strong>nested/);assert.equal((result.match(/<details/g)||[]).length,2);
+console.log('PASS: real Markdown parsing and KaTeX math; folded/nested callouts, lists, tables, tasks, CRLF/frontmatter, wikilinks, code protection, tilde Mermaid fences and escaped aliases.');

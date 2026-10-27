@@ -1,0 +1,88 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>StudyHub · Notes to understanding</title><style>html,body,#root{height:100%;margin:0;overflow:hidden}body{background:#131314}</style>
+<script src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script><script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script><script src="https://unpkg.com/@mui/material@5.15.15/umd/material-ui.production.min.js"></script><script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script></head><body><div id="root"></div><script type="text/babel">
+const{useState,useEffect,useRef}=React;
+const{ThemeProvider,createTheme,CssBaseline,Box,Stack,Typography,Button,IconButton,Tooltip,Chip,Alert,Dialog,DialogTitle,DialogContent,DialogActions,Divider,Snackbar}=MaterialUI;
+// Keep warning dismissal separate from the underlying saved job or error record.
+const noticeText=value=>value==null?'':typeof value==='string'||typeof value==='number'?String(value):Array.isArray(value)?value.map(noticeText).join(' '):noticeText(value.props?.text??value.props?.children??value.children);
+function Notice({children,severity='success',action,onClose,dismissKey,sx,...props}){
+ const [dismissed,setDismissed]=useState(null);
+ const signature=severity+':'+noticeText(children),storageKey=dismissKey?'dismissed-warning.'+dismissKey:null;
+ let persisted=false;if(storageKey)try{persisted=localStorage.getItem(storageKey)===signature}catch{}
+ if(dismissed===signature||persisted)return null;
+ const closable=severity==='warning'||severity==='error'||!!onClose;
+ const close=event=>{setDismissed(signature);if(storageKey)try{localStorage.setItem(storageKey,signature)}catch{}onClose?.(event)};
+ return <Alert {...props} sx={[{borderRadius:'8px',alignItems:'center',py:1,minHeight:48,'& .MuiAlert-icon':{p:0,alignItems:'center'},'& .MuiAlert-message':{minWidth:0,py:0,'& p':{my:.5},'& p:first-of-type':{mt:0},'& p:last-child':{mb:0}},'& .MuiAlert-action':{py:0,alignItems:'center',alignSelf:'center'}},...(Array.isArray(sx)?sx:[sx])]} severity={severity} action={closable?<Stack direction="row" spacing={1} alignItems="center">{action}<IconButton color="inherit" size="small" aria-label="Dismiss Warning" title="Dismiss" onClick={close}>×</IconButton></Stack>:action}>{children}</Alert>;
+}
+const theme=createTheme({palette:{mode:'dark',background:{default:'#131314',paper:'#1e1f20'},primary:{main:'#a8c7fa'},secondary:{main:'#d0bcff'},text:{primary:'#e3e3e3',secondary:'#b4b6bc'},divider:'#34363a'},shape:{borderRadius:18},typography:{fontFamily:'Inter,system-ui,sans-serif',button:{textTransform:'none',fontWeight:600},h6:{fontWeight:600,letterSpacing:'-.03em'}},components:{MuiButton:{defaultProps:{disableElevation:true},styleOverrides:{root:{borderRadius:24,padding:'10px 16px'}}}}});
+function storeNotificationState(key,value){try{localStorage.setItem(key,JSON.stringify(value))}catch{/* Notifications still work if browser storage is unavailable. */}}
+function loadNotifications(){try{const rows=JSON.parse(localStorage.getItem('hub.notifications')||'[]');return Array.isArray(rows)?rows.filter(n=>n&&typeof n.id==='string'&&typeof n.title==='string'&&typeof n.detail==='string'&&['notes','history'].includes(n.target)):[]}catch{return []}}
+function desktopNotification(event){try{if(typeof Notification!=='undefined'&&Notification.permission==='granted')new Notification(event.title,{body:event.detail})}catch{/* OS notifications are optional; keep the in-app popup and inbox. */}}
+function App(){
+ const shared=new URLSearchParams(location.search).get('share');
+ const[section,setSection]=useState(shared?'home':localStorage.getItem('hub.section')||'home'),[collapsed,setCollapsed]=useState(false),[health,setHealth]=useState(null),[about,setAbout]=useState(false),[ready,setReady]=useState(false);
+ const [inbox,setInbox]=useState(loadNotifications),[inboxOpen,setInboxOpen]=useState(false);
+ const inboxRef=useRef(inbox);inboxRef.current=inbox;
+ const seen=useRef((()=>{try{return JSON.parse(localStorage.getItem('hub.processing-status')||'{}')}catch{return {}}})());
+ useEffect(()=>{
+  let active=true,busy=false;
+  const poll=async()=>{
+   if(busy||document.hidden)return;busy=true;
+   try{
+    const responses=await Promise.all([fetch('/notes/api/review/sessions'),fetch('/learn/api/jobs')]);
+    if(!responses.every(r=>r.ok))return;
+    const [sessions,jobs]=await Promise.all(responses.map(r=>r.json()));
+    const current={},events=[];
+    for(const [prefix,rows] of [['note',sessions],['study',jobs]])for(const row of rows){
+     const key=prefix+':'+row.id;current[key]=row.status;
+     if(seen.current&&seen.current[key]!==row.status&&['review','done','failed'].includes(row.status)){
+      events.push({id:key+':'+row.status,title:prefix==='note'?(row.status==='review'?'Note ready for your review':row.status==='done'?'Note saved':'Note processing failed'):(row.status==='done'?'Study material ready':'Study generation failed'),detail:String(row.title||row.request?.prompt||row.course||'AI processing'),target:prefix==='note'?'notes':'history',time:Date.now(),read:false});
+     }
+    }
+    if(!active)return;
+    seen.current=current;storeNotificationState('hub.processing-status',current);
+    const fresh=events.filter(e=>!inboxRef.current.some(n=>n.id===e.id));
+    if(fresh.length){
+     const next=[...fresh,...inboxRef.current].slice(0,100);inboxRef.current=next;
+     setToast(fresh[0]);setInbox(next);
+     // Native notification constructors can throw; never run them in a state updater.
+     fresh.forEach(desktopNotification);
+    }
+   }catch{}finally{busy=false}
+  };
+  poll();const timer=setInterval(poll,15000);document.addEventListener('visibilitychange',poll);
+  return()=>{active=false;clearInterval(timer);document.removeEventListener('visibilitychange',poll)};
+ },[]);
+ useEffect(()=>{storeNotificationState('hub.notifications',inbox)},[inbox]);
+ const [tourDone,setTourDone]=useState(()=>!!localStorage.getItem('study.tutorial.v2.done')),[tourStatus,setTourStatus]=useState(null);
+ const [referenceReturn,setReferenceReturn]=useState(false),[toast,setToast]=useState(null);
+ const notes=useRef(null),learn=useRef(null),pending=useRef(null),notesPending=useRef(null),notesReady=useRef(false);
+ const healthCheck=()=>document.hidden?Promise.resolve():fetch('/api/health').then(r=>r.json()).then(setHealth).catch(()=>setHealth({notes:false,learning:false}));
+ useEffect(()=>{healthCheck();const t=setInterval(healthCheck,30000);return()=>clearInterval(t)},[]);
+ const select=view=>{setSection(view);localStorage.setItem('hub.section',view);if(view!=='notes'){const msg={type:'study-navigate',view};if(ready)learn.current?.contentWindow.postMessage(msg,location.origin);else pending.current=msg}};
+ useEffect(()=>{const receive=e=>{if(e.origin!==location.origin)return;if(e.source===notes.current?.contentWindow&&e.data?.type==='notes-tour-reviewed'){learn.current?.contentWindow.postMessage({type:'study-tour-action',name:'note-reviewed'},location.origin);return}if(e.source!==learn.current?.contentWindow)return;switch(e.data?.type){case 'study-navigate':if(['home','notebooks','history','settings','notes'].includes(e.data.view)){setSection(e.data.view);localStorage.setItem('hub.section',e.data.view)}break;case 'study-open-notes':setSection('notes');notes.current?.contentWindow.postMessage({type:'notes-tour-start'},location.origin);break;case 'study-open-notifications':setInboxOpen(true);learn.current?.contentWindow.postMessage({type:'study-tour-action',name:'notifications'},location.origin);break;case 'study-tour-status':setTourStatus(e.data.active?e.data:null);break;case 'study-tour-completed':setTourDone(true);setTourStatus(null);break;}};window.addEventListener('message',receive);return()=>window.removeEventListener('message',receive)},[]);
+ useEffect(()=>{const receive=e=>{if(e.origin!==location.origin||e.source!==learn.current?.contentWindow||e.data?.type!=='study-open-note')return;if(!Number.isInteger(e.data.note_id)||e.data.note_id<1)return;setReferenceReturn(true);setSection('notes');localStorage.setItem('hub.section','notes');{const msg={type:'notes-focus',note_id:e.data.note_id,heading:String(e.data.heading||'')};if(notesReady.current&&notes.current?.contentWindow)notes.current.contentWindow.postMessage(msg,location.origin);else notesPending.current=msg}};window.addEventListener('message',receive);const receiveNotes=e=>{if(e.origin!==location.origin||e.source!==notes.current?.contentWindow||e.data?.type!=='study-notes')return;const ids=e.data.note_ids;if(!Array.isArray(ids)||!ids.length||!ids.every(id=>Number.isInteger(id)&&id>0))return;setSection('home');localStorage.setItem('hub.section','home');const msg={type:'study-notes',note_ids:ids,mode:['guided','quiz'].includes(e.data.mode)?e.data.mode:'guided'};if(ready)learn.current?.contentWindow.postMessage(msg,location.origin);else pending.current=msg};window.addEventListener('message',receiveNotes);return()=>{window.removeEventListener('message',receive);window.removeEventListener('message',receiveNotes)}},[ready]);
+ const nav=[['home','✦','Learn'],['notes','▤','My notes'],['notebooks','▣','Notebooks'],['history','◷','History & progress'],['settings','⚙','AI models & settings']];
+ return <ThemeProvider theme={theme}><CssBaseline/><Box sx={{display:'flex',height:'100vh'}}>
+ <Box component="nav" aria-label="Main navigation" sx={{width:collapsed?72:{xs:72,md:240},flexShrink:0,bgcolor:'#1e1f20',p:1.5,display:'flex',flexDirection:'column',transition:'width .2s'}}>
+ <Stack direction="row" alignItems="center" spacing={1} sx={{mb:3,p:1}}><Tooltip title="Toggle sidebar"><IconButton aria-label="Toggle sidebar" onClick={()=>setCollapsed(!collapsed)} sx={{fontSize:20}}>☰</IconButton></Tooltip>{!collapsed&&<Typography variant="h6" sx={{display:{xs:'none',md:'block'}}}>StudyHub</Typography>}</Stack>
+ <Button variant="outlined" onClick={()=>select('home')} sx={{mb:3,bgcolor:'#282d35',borderColor:'transparent',justifyContent:collapsed?'center':'start',minWidth:0}}>+<Box component="span" sx={{ml:1,display:collapsed?'none':{xs:'none',md:'inline'}}}>New learning session</Box></Button>
+ {nav.map(([view,icon,label])=><Tooltip key={view} title={label} placement="right"><Button fullWidth onClick={()=>select(view)} aria-label={label} sx={{my:.25,justifyContent:collapsed?'center':'start',bgcolor:section===view?'#33415b':'transparent',color:'text.primary',minWidth:0}}><Box component="span" sx={{fontSize:21,minWidth:24}}>{icon}</Box><Box component="span" sx={{ml:1.5,display:collapsed?'none':{xs:'none',md:'inline'}}}>{label}</Box></Button></Tooltip>)}
+ <Box sx={{flex:1}}/><Divider sx={{my:2}}/>{!collapsed&&<Typography variant="caption" color="text.secondary" sx={{px:1,display:{xs:'none',md:'block'},mb:1}}>Notes → understanding → practice</Typography>}<Tooltip title="About your workspace"><Button onClick={()=>setAbout(true)} sx={{justifyContent:collapsed?'center':'start',minWidth:0}}>ⓘ<Box component="span" sx={{ml:1.5,display:collapsed?'none':{xs:'none',md:'inline'}}}>Your workspace</Box></Button></Tooltip>
+ </Box>
+ <Box sx={{flex:1,minWidth:0,display:'flex',flexDirection:'column'}}>
+ <Stack direction="row" alignItems="center" spacing={1} sx={{minHeight:64,flexWrap:'wrap',gap:1,py:1,px:{xs:2,md:3},flexShrink:0}}><Typography variant="h6" sx={{flex:1}}>{section==='notes'?'NoteSorter':section==='notebooks'?'Notebooks':section==='history'?'Your learning history':section==='settings'?'Models & connections':'Learn'}<Box component="span" sx={{color:'secondary.main',ml:1}}>✦</Box></Typography><Button size="small" onClick={()=>{setInboxOpen(true);setInbox(old=>old.map(n=>({...n,read:true})))}}>Notifications{inbox.some(n=>!n.read)?` (${inbox.filter(n=>!n.read).length})`:''}</Button>{!tourDone&&<Button size="small" onClick={()=>{select('home');learn.current?.contentWindow.postMessage({type:'study-tutorial'},location.origin)}}>Tutorial</Button>}{health&&<Tooltip title={`NoteSorter: ${health.notes?'connected':'unavailable'} · Learning: ${health.learning?'connected':'unavailable'}`}><Box aria-label="Backend connection status" sx={{width:8,height:8,borderRadius:'50%',bgcolor:health.notes&&health.learning?'#a8d5b0':'#edc487'}}/></Tooltip>}</Stack>
+ {section==='notes'&&referenceReturn&&<Box sx={{px:2,pb:1}}><Button variant="outlined" onClick={()=>{setSection('home');setReferenceReturn(false);localStorage.setItem('hub.section','home')}}>← Back to Learning</Button></Box>}
+ {section==='notes'&&tourStatus&&<Notice severity="info" sx={{mx:2,mb:1}} action={<Button onClick={()=>select('home')}>Return to Tutorial</Button>}>{tourStatus.title}. Upload and review a note here, then return to continue.</Notice>}
+ {health&&(!health.notes||!health.learning)&&<Notice severity="warning" sx={{mx:2,mb:1}} action={<Button onClick={healthCheck}>Check again</Button>}>The application is unreachable. Check the server terminal, then try again.</Notice>}
+ <Box sx={{flex:1,minHeight:0,position:'relative',borderTop:'1px solid',borderColor:'divider'}}>
+ <Box component="iframe" ref={notes} title="NoteSorter" src="/notes/" onLoad={()=>{notesReady.current=true;if(notesPending.current){notes.current?.contentWindow.postMessage(notesPending.current,location.origin);notesPending.current=null}}} sx={{display:section==='notes'?'block':'none',width:'100%',height:'100%',border:0}}/>
+ <Box component="iframe" ref={learn} title="Learning workspace" src={'/learn/'+(shared?'?share='+encodeURIComponent(shared):'')} onLoad={()=>{setReady(true);if(pending.current){learn.current?.contentWindow.postMessage(pending.current,location.origin);pending.current=null}else if(!shared&&section!=='notes'){learn.current?.contentWindow.postMessage({type:'study-navigate',view:section},location.origin)}}} sx={{display:section==='notes'?'none':'block',width:'100%',height:'100%',border:0}}/>
+ </Box></Box>
+ {/* Snackbar’s Grow transition needs a stable native DOM child, including during exit. */}
+ <Snackbar open={!!toast} autoHideDuration={7000} onClose={()=>setToast(null)} anchorOrigin={{vertical:'bottom',horizontal:'right'}}><div style={{maxWidth:'min(440px, calc(100vw - 32px))'}}><Notice severity={toast?.title?.includes('failed')?'error':'success'} variant="filled" onClose={()=>setToast(null)} action={<Button color="inherit" size="small" onClick={()=>{if(toast)select(toast.target);setToast(null)}}>Open</Button>}>{toast?.title}{toast?.detail&&<Typography variant="body2">{toast.detail}</Typography>}</Notice></div></Snackbar>
+ <Dialog open={inboxOpen} onClose={()=>setInboxOpen(false)} fullWidth><DialogTitle>Notifications</DialogTitle><DialogContent>{!inbox.length&&<Typography color="text.secondary">You’re all caught up. AI processing updates will appear here.</Typography>}{inbox.map(n=><Box key={n.id} sx={{py:2,borderBottom:'1px solid',borderColor:'divider'}}><Typography>{n.title}</Typography><Typography variant="body2" color="text.secondary">{n.detail} · {new Date(n.time).toLocaleString()}</Typography><Button onClick={()=>{select(n.target);setInboxOpen(false)}}>Open {n.target==='notes'?'notes':'history'}</Button></Box>)}</DialogContent><DialogActions>{typeof Notification!=='undefined'&&Notification.permission==='default'&&<Button onClick={()=>Notification.requestPermission()}>Enable browser alerts</Button>}<Button onClick={()=>setInbox([])}>Clear notifications</Button><Button onClick={()=>setInboxOpen(false)}>Close</Button></DialogActions></Dialog>
+ <Dialog open={about} onClose={()=>setAbout(false)} fullWidth><DialogTitle>Your connected learning workspace</DialogTitle><DialogContent><Typography paragraph>NoteSorter turns your uploaded pages into reviewed, linked notes. Learn uses the notes you select for guided lessons, quizzes, flashcards, practice tests, and interactive tools.</Typography><Typography paragraph>Notebooks preserve source snapshots, conversations, generated materials, and practice history. Choose cloud models or a local or remote Ollama server in AI models & settings.</Typography><Typography variant="body2" color="text.secondary">Notes and learning run together in one application. Start it with node server.mjs. Your notes and study history are stored locally.</Typography></DialogContent><DialogActions><Button onClick={()=>setAbout(false)}>Done</Button></DialogActions></Dialog>
+ </Box></ThemeProvider>;
+}
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script></body></html>
