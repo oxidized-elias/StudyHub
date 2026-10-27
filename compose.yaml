@@ -1,0 +1,36 @@
+name: studyhub
+services:
+  studyhub:
+    image: studyhub:local
+    build:
+      context: .
+      args:
+        APP_UID: ${STUDYHUB_UID:-1000}
+        APP_GID: ${STUDYHUB_GID:-1000}
+    init: true
+    restart: unless-stopped
+    ports:
+      - "${STUDYHUB_HOST:-127.0.0.1}:${STUDYHUB_PORT:-8082}:8082"
+    environment:
+      # Host/manual-install paths must not replace these container paths.
+      STUDYHUB_BIND: 0.0.0.0:8082
+      DATA_DIR: /app/data
+      LEARNING_DATA_DIR: /app/data/learning
+      VAULT_DIR: /vault
+      STUDYHUB_URL: ${STUDYHUB_URL:-http://localhost:${STUDYHUB_PORT:-8082}}
+      STUDYHUB_USER: ${STUDYHUB_USER:-admin}
+      STUDYHUB_PASSWORD: ${STUDYHUB_PASSWORD:-}
+    volumes:
+      - studyhub_data:/app/data
+      - ${STUDYHUB_VAULT_PATH:-studyhub_vault}:/vault
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    stop_grace_period: 45s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+volumes:
+  studyhub_data:
+  studyhub_vault:

@@ -38,6 +38,7 @@ node server.mjs --release --no-build
 
 Run under a service manager with a non-root account and writable data directories. Set environment variables in that manager or use Node's explicit `--env-file`. Route `/` and every subpath to the single listener. Allow long model requests (up to 20 minutes at the application/provider level) and at least 64 MiB upload bodies. There are no backend ports to expose.
 
+For container deployment, see [Docker setup](DOCKER.md). Compose keeps data at `/app/data` and the vault at `/vault`, with persistent mounts for both. Settings paths then refer to the container filesystem.
 
 ## Files and backups
 
