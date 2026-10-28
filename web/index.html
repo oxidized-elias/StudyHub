@@ -411,11 +411,13 @@ function Viewer({d,sessions,setSel,toLog,onDelete,focusHeading='',focusAll=false
    <Button size="small" onClick={toLog}>AI log</Button>
    <Button size="small" color="error" onClick={()=>onDelete(d)}>Delete</Button></Stack>
   <Typography variant="caption" color="text.secondary">{d.class_type} / {d.course} / {d.unit?`Unit ${d.unit}: `:''}{d.lesson}</Typography>
-  <NoteStyleControl id={d.id}/><Md documentPath={d.note_path||''} md={d.note||'*The note file was not found in the current vault folder.*'} sid={d.id} onNote={onNote} highlightHeading={focusHeading} highlightAll={focusAll}/>
+  <NoteStyleControl id={d.id}/>
+  <Box component="details" sx={{my:2,border:1,borderColor:'divider',borderRadius:1,p:1.5}}><Box component="summary" sx={{cursor:'pointer',fontWeight:500}}>View Source · Transcription or Original Upload</Box><Box sx={{height:600,mt:2}}><SourcePreview sources={d.sources||[]} transcript={d.transcript}/></Box></Box>
+  <Md documentPath={d.note_path||''} md={d.note||'*The note file was not found in the current vault folder.*'} sid={d.id} onNote={onNote} highlightHeading={focusHeading} highlightAll={focusAll}/>
  </Box>;
 }
 
-function Notes({sessions,sel,setSel,toLog,onDelete,focusHeading='',focusAll=false}){
+function Notes({sessions,sel,setSel,toLog,onDelete,onDeleteFolder,focusHeading='',focusAll=false}){
  const [d,setD]=useState(null),[col,setCol]=useState(false),[studyIds,setStudyIds]=useState([]),[query,setQuery]=useState(''),[closed,setClosed]=useState({});
  useEffect(()=>{if(!sel){setD(null);return}api('/api/review/session/'+sel).then(setD).catch(()=>setD(null))},[sel,sessions]);
  const tree={};
@@ -428,9 +430,9 @@ function Notes({sessions,sel,setSel,toLog,onDelete,focusHeading='',focusAll=fals
    {!!studyIds.length&&<Stack spacing={1} sx={{mb:2}}><Typography variant="caption">{studyIds.length} notes selected</Typography><Button size="small" variant="outlined" href={studyLink(studyIds,'guided')} onClick={e=>handoff(e,studyIds,'guided')}>Learn selected</Button><Button size="small" variant="outlined" href={studyLink(studyIds,'quiz')} onClick={e=>handoff(e,studyIds,'quiz')}>Quiz selected</Button></Stack>}
    {!Object.keys(tree).length&&<Typography variant="body2" color="text.secondary">{query?'No matching notes.':'No notes yet.'}</Typography>}
    {Object.entries(tree).map(([ct,cs])=><Box key={ct} sx={{mb:1}}>
-    <Button fullWidth sx={{justifyContent:'start',textAlign:'left'}} aria-expanded={!!query||!closed[ct]} onClick={()=>setClosed(p=>({...p,[ct]:!p[ct]}))}>{query||!closed[ct]?'▾':'▸'} {ct}</Button>
+    <Stack direction="row" alignItems="center"><Button fullWidth sx={{justifyContent:'start',textAlign:'left'}} aria-expanded={!!query||!closed[ct]} onClick={()=>setClosed(p=>({...p,[ct]:!p[ct]}))}>{query||!closed[ct]?'▾':'▸'} {ct}</Button><Button size="small" color="error" aria-label={'Delete folder '+ct} onClick={()=>onDeleteFolder({class_type:ct})}>Delete</Button></Stack>
     {(query||!closed[ct])&&Object.entries(cs).map(([co,rs])=><Box key={co} sx={{pl:1}}>
-     <Button fullWidth size="small" sx={{justifyContent:'start',textAlign:'left',color:'text.secondary'}} aria-expanded={!!query||!closed[ct+'/'+co]} onClick={()=>setClosed(p=>({...p,[ct+'/'+co]:!p[ct+'/'+co]}))}>{query||!closed[ct+'/'+co]?'▾':'▸'} {co}</Button>
+     <Stack direction="row" alignItems="center"><Button fullWidth size="small" sx={{justifyContent:'start',textAlign:'left',color:'text.secondary'}} aria-expanded={!!query||!closed[ct+'/'+co]} onClick={()=>setClosed(p=>({...p,[ct+'/'+co]:!p[ct+'/'+co]}))}>{query||!closed[ct+'/'+co]?'▾':'▸'} {co}</Button><Button size="small" color="error" aria-label={'Delete folder '+ct+'/'+co} onClick={()=>onDeleteFolder({class_type:ct,course:co})}>Delete</Button></Stack>
      {(query||!closed[ct+'/'+co])&&rs.map(r=><ListItemButton dense key={r.id} selected={r.id===sel} onClick={()=>setSel(r.id)} sx={{pl:1.5,borderRadius:1}}>
       <Checkbox size="small" checked={studyIds.includes(r.id)} inputProps={{'aria-label':'Use '+r.title+' for study'}} onClick={e=>e.stopPropagation()} onChange={e=>setStudyIds(p=>e.target.checked?[...p,r.id]:p.filter(id=>id!==r.id))}/>
       <ListItemText primary={r.title} secondary={r.unit?'Unit '+r.unit:''} primaryTypographyProps={{fontSize:14}}/></ListItemButton>)}
@@ -509,9 +511,9 @@ function Review({sessions,refresh,sel,setSel,onDelete,focusHeading=''}){
 
 function Del({s,onClose,onDone}){
  const [files,setFiles]=useState(true),[busy,setBusy]=useState(false),[err,setErr]=useState('');
- const go=async()=>{setBusy(true);setErr('');try{await api(`/api/review/session/${s.id}?files=${files}`,{method:'DELETE'});onDone()}catch(e){setErr(e.message);setBusy(false)}};
- return <Dialog open onClose={busy?undefined:onClose}><DialogTitle>Delete {s.title?`"${s.title}"`:'this session'}?</DialogTitle>
-  <DialogContent><Typography gutterBottom>This removes the session and its AI log from the review history.</Typography>
+ const go=async()=>{setBusy(true);setErr('');try{await (s.folder?api('/api/vault/folder',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify(s.folder)}):api(`/api/review/session/${s.id}?files=${files}`,{method:'DELETE'}));onDone()}catch(e){setErr(e.message);setBusy(false)}};
+ return <Dialog open onClose={busy?undefined:onClose}><DialogTitle>Delete {s.folder?'folder '+[s.folder.class_type,s.folder.course].filter(Boolean).join(' / '):s.title?`"${s.title}"`:'this session'}?</DialogTitle>
+  <DialogContent><Typography gutterBottom>{s.folder?'This permanently deletes the folder, all subfolders, notes, uploads, and their review history and AI logs. Imported notebook copies are kept.':'This removes the session and its AI log from the review history.'}</Typography>
    {s.title&&<FormControlLabel control={<Checkbox checked={files} onChange={e=>setFiles(e.target.checked)}/>} label="Also delete the note and its PDFs from the Obsidian vault"/>}
    {err&&<Notice severity="error" sx={{mt:1}}>{err}</Notice>}</DialogContent>
   <DialogActions><Button disabled={busy} onClick={onClose}>Cancel</Button><Button color="error" variant="contained" disabled={busy} onClick={go}>Delete</Button></DialogActions></Dialog>;
@@ -572,7 +574,7 @@ function Right({sessions,refresh,onHide}){
    </Tabs>
    <Tooltip title="Collapse workspace"><Button size="small" onClick={onHide} aria-label="Collapse workspace" sx={{minWidth:36}}>»</Button></Tooltip></Stack>
   <Box sx={{flex:1,minHeight:0,overflow:(mode==='notes'||mode==='log')?'hidden':'auto'}}>
-   {mode==='notes'?<Notes sessions={sessions} sel={sel} setSel={setSel} toLog={()=>setMode('log')} onDelete={setDel} focusHeading={sel===focusId?focusHeading:''} focusAll={sel===focusId&&!focusHeading}/>
+   {mode==='notes'?<Notes sessions={sessions} sel={sel} setSel={setSel} toLog={()=>setMode('log')} onDelete={setDel} onDeleteFolder={folder=>setDel({folder})} focusHeading={sel===focusId?focusHeading:''} focusAll={sel===focusId&&!focusHeading}/>
     :mode==='lessons'?<Lessons sessions={sessions}/>
     :mode==='ideas'?<BigIdeas sessions={sessions} onOpen={n=>{const r=sessions.find(x=>x.title===n);if(r){setSel(r.id);setMode('notes')}}}/>
     :<Review sessions={sessions} refresh={refresh} sel={sel} setSel={setSel} onDelete={setDel} focusHeading={focusHeading}/>}</Box>

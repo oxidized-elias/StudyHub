@@ -45,6 +45,7 @@ Source: [src/lib.rs](../src/lib.rs). Handlers in child modules are referenced by
 | GET | `/notes/api/lessons` | `get(lessons_list)` |
 | GET | `/notes/api/big_ideas` | `get(big_ideas)` |
 | GET | `/notes/api/vault/document` | `get(big_ideas::document)` |
+| DELETE | `/notes/api/vault/folder` | `axum::routing::delete(delete_folder)` |
 | POST | `/notes/api/review/session/:id/retry` | `post(retry)` |
 | POST | `/notes/api/review/session/:id/kill` | `post(kill)` |
 | DELETE | `/notes/api/lessons/:id` | `axum::routing::delete(lesson_delete)` |

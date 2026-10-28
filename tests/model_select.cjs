@@ -54,4 +54,18 @@ async function savedProfileSettings(){
  tree=remounted.render(remounted.e.ProviderSettings,{...props,profiles:[profiles[0],{...profiles[1],model:payload.model}]});
  assert.equal(nodes(tree,n=>n.type===remounted.e.ModelSelect)[0].props.profile.model,'new-installed-model');
 }
-(async()=>{select();await discovery();await savedProfileSettings();console.log('PASS: Settings dropdowns, remote-server discovery, saved model preservation, endpoint filtering, and custom model fallback.');})().catch(e=>{console.error(e);process.exit(1)});
+async function noteImportSettings(){
+ const config={provider:'ollama',ollama_url:'http://notes-server:11434',vault_path:'/vault',note_style:'hybrid',models:{ollama:{ai1:'writer',vision:'missing-reader'}}};
+ const h=harness([config,false]);
+ const props={profiles:[],settings:{unified:true},reload:async()=>{},onTutorial(){}};
+ let tree=h.render(h.e.ProviderSettings,props);
+ const reader=nodes(tree,n=>n.type===h.e.ModelSelect&&n.props.label==='Image / PDF Reading Model')[0];
+ assert.equal(reader.props.profile.model,'missing-reader');
+ assert.equal(reader.props.profile.base_url,config.ollama_url);
+ reader.props.onChange('installed-reader');
+ tree=h.render(h.e.ProviderSettings,props);
+ h.c.fetch=async(url,options)=>{assert.equal(url,'/api/notes/config');assert.equal(options.method,'PUT');const body=JSON.parse(options.body);assert.equal(body.models.ollama.vision,'installed-reader');assert.equal(body.models.ollama.ai1,'writer');return{ok:true,json:async()=>body}};
+ await nodes(tree,n=>n.type==='Button'&&label(n)==='Save Note Import Models')[0].props.onClick();
+ assert.equal(h.values[0].models.ollama.vision,'installed-reader');
+}
+(async()=>{await noteImportSettings();select();await discovery();await savedProfileSettings();console.log('PASS: Settings dropdowns, remote-server discovery, saved model preservation, endpoint filtering, and custom model fallback.');})().catch(e=>{console.error(e);process.exit(1)});

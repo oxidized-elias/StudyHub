@@ -260,12 +260,19 @@ mod tests {
             app.clone(),
             "PUT",
             "/learn/api/notes/config",
-            json!({"vault_path":temp.join("vault"),"note_style":"hybrid"}),
+            json!({"vault_path":temp.join("vault"),"note_style":"hybrid", "provider":"ollama", "ollama_url":"http://model-server:11434", "models":{"ollama":{"ai1":"writer:4b","vision":"reader:4b"}}, "api_key":"private-notes-key"}),
         )
         .await;
         assert!(saved.is_object());
         let config = json_request(app.clone(), "GET", "/learn/api/notes/config", json!({})).await;
         assert_eq!(config["note_style"], "hybrid");
+        assert_eq!(config["models"]["ollama"]["vision"], "reader:4b");
+        assert_eq!(config["models"]["ollama"]["ai1"], "writer:4b");
+        assert_eq!(config["ollama_url"], "http://model-server:11434");
+        assert!(!config.to_string().contains("private-notes-key"));
+        let disk: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(temp.join("config.json")).unwrap()).unwrap();
+        assert_eq!(disk["models"]["ollama"]["vision"], "reader:4b");
         assert_eq!(
             json_request(app.clone(), "GET", "/learn/api/notes", json!({})).await,
             json!([])
@@ -332,6 +339,85 @@ mod tests {
         )
         .await;
         assert_eq!(denied.status(), StatusCode::BAD_REQUEST);
+        let sibling = temp.join("vault/Topic/OtherCourse/keep.md");
+        std::fs::create_dir_all(sibling.parent().unwrap()).unwrap();
+        std::fs::write(&sibling, "Keep this course").unwrap();
+        for folder in [
+            json!({"class_type":".."}),
+            json!({"class_type":"Topic","course":"../OtherCourse"}),
+        ] {
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("DELETE")
+                        .uri("/notes/api/vault/folder")
+                        .header("authorization", "Basic test")
+                        .header("content-type", "application/json")
+                        .body(Body::from(folder.to_string()))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        }
+        #[cfg(unix)]
+        {
+            let outside = temp.join("outside");
+            std::fs::create_dir_all(&outside).unwrap();
+            std::fs::write(outside.join("keep.md"), "Outside vault").unwrap();
+            let link = temp.join("vault/Linked");
+            std::os::unix::fs::symlink(&outside, &link).unwrap();
+            let response = app
+                .clone()
+                .oneshot(
+                    Request::builder()
+                        .method("DELETE")
+                        .uri("/notes/api/vault/folder")
+                        .header("authorization", "Basic test")
+                        .header("content-type", "application/json")
+                        .body(Body::from(json!({"class_type":"Linked"}).to_string()))
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+            assert!(outside.join("keep.md").exists());
+            std::fs::remove_file(link).unwrap();
+        }
+        let removed = json_request(
+            app.clone(),
+            "DELETE",
+            "/notes/api/vault/folder",
+            json!({"class_type":"Topic","course":"Course"}),
+        )
+        .await;
+        assert_eq!(removed["deleted_sessions"], 1);
+        assert!(!temp.join("vault/Topic/Course").exists());
+        assert!(sibling.exists());
+        assert_eq!(
+            json_request(app.clone(), "GET", "/learn/api/notes", json!({})).await,
+            json!([])
+        );
+        let notebook = json_request(
+            app.clone(),
+            "GET",
+            &format!("/learn/api/notebooks/{id}"),
+            json!({}),
+        )
+        .await;
+        assert!(notebook["sources"][0]["body"]
+            .as_str()
+            .unwrap()
+            .contains("Human-approved source text"));
+        json_request(
+            app.clone(),
+            "DELETE",
+            "/notes/api/vault/folder",
+            json!({"class_type":"Topic"}),
+        )
+        .await;
+        assert!(!temp.join("vault/Topic").exists());
         let settings = json_request(app, "GET", "/learn/api/settings", json!({})).await;
         assert_eq!(settings["unified"], true);
         std::fs::remove_dir_all(temp).unwrap();

@@ -31,7 +31,7 @@ Rules:
 - Create exactly ONE note. Big ideas are H2 sections (## headings) inside it, never extra notes.
 - For sections within THIS note use [[#Exact Heading]] (or plain prose), never [[Heading]] or entries in the external "links" array.
 - Link to other notes ONLY with [[Exact Title]] copied from EXISTING NOTES. Never invent titles.
-- Write connections INLINE, in the prose of the section where they apply: a natural sentence that names the other note as [[Exact Title]] (or another big idea in this same note) and says how they connect. Do NOT write a separate "Connects to" line, a Links section or a Connections section. If a big idea connects to nothing, leave it out entirely.
+- Write connections INLINE, in the prose of the section where they apply: a natural sentence that names the other note as [[Exact Title]] (or another big idea in this same note) and says how they connect. Do NOT write a separate "Connects to" line, a Links section or a Connections section. Keep important ideas even when they have no related note; connections are optional. Never force a connection to an unrelated note.
 - Reuse an existing subject big-idea name as an H2 heading when it accurately describes the supplied content; this connects notes across courses. Do not merge distinct concepts just because their names are similar.
 - You may create your own section headings and organization; the content under them must still come only from the transcript.
 - Use valid Markdown with blank lines around fenced code blocks.
@@ -255,9 +255,6 @@ pub async fn create_router() -> AResult<Router> {
     }
     .normalize();
     let _ = std::fs::create_dir_all(vpath(&s.vault_path));
-    if let Err(e) = rebuild_topic_indexes(&vpath(&s.vault_path)) {
-        eprintln!("Could not refresh topic indexes: {e}");
-    }
     let db = Connection::open(data.join("review").join("sessions.db"))?;
     initialize_database(&db)?;
     recover_interrupted(&db)?;
@@ -272,6 +269,10 @@ pub async fn create_router() -> AResult<Router> {
             .build()?,
         db: std::sync::Mutex::new(db),
     });
+    integration::clean_legacy_note_inputs(&app).await?;
+    if let Err(e) = rebuild_topic_indexes(&app.vault().await) {
+        eprintln!("Could not refresh topic indexes: {e}");
+    }
     let r = Router::new()
         .route(
             "/",
@@ -323,6 +324,7 @@ pub async fn create_router() -> AResult<Router> {
         .route("/api/lessons", get(lessons_list))
         .route("/api/big_ideas", get(big_ideas))
         .route("/api/vault/document", get(big_ideas::document))
+        .route("/api/vault/folder", axum::routing::delete(delete_folder))
         .route("/api/review/session/:id/retry", post(retry))
         .route("/api/review/session/:id/kill", post(kill))
         .route("/api/lessons/:id", axum::routing::delete(lesson_delete))
@@ -1013,9 +1015,6 @@ fn check(d: &Value, titles: &[String]) -> Vec<String> {
             p.push(format!("Mention the connection to [[{t}]] inline in the text of the section it belongs to (not in a separate list)"));
         }
     }
-    if !titles.is_empty() && !all.contains("[[") {
-        p.push("Connect big ideas to existing notes with [[links]]".into());
-    }
     p
 }
 
@@ -1023,11 +1022,11 @@ fn check(d: &Value, titles: &[String]) -> Vec<String> {
 const PLAN_AI1: &str = r##"You are planning exactly ONE Obsidian note from a student's transcribed notes, BEFORE anything is written. Decide the big ideas and how each one connects.
 Rules:
 - Use ONLY ideas that appear in the TRANSCRIPT, STUDENT CLARIFICATIONS and USER INPUT. Outside knowledge may only help you decide which ideas are the big ideas; never add facts, sources or URLs.
-- Each big idea must connect to an existing note (copy its exact title from EXISTING NOTES) or to another big idea in this same note (write SELF: followed by that idea's name). If it connects to nothing, leave it out.
+- Connections are optional. Keep every important idea supported by the transcript, even if it has no connection. For a meaningful connection use an exact title from EXISTING NOTES or SELF: followed by another idea name in this plan. Otherwise use an empty connects_to and how. Never connect unrelated ideas just to supply a link.
 - The MASTER LIST contains shared ideas for this SUBJECT across courses. If the supplied content uses an existing idea, reuse its exact name for your big idea; connect to an existing note only when its exact title appears in EXISTING NOTES. Give genuinely new ideas a new name.
 - In "evidence" say where in the transcript the idea appears; in "how" say how the two things connect.
 - Put anything you are unsure about in "questions" so the reviewer can help clarify it.
-Reply with JSON only: {"big_ideas":[{"name":"...","evidence":"...","connects_to":"Exact Existing Title or SELF: other idea","how":"..."}],"questions":["..."]}"##;
+Reply with JSON only: {"big_ideas":[{"name":"...","evidence":"...","connects_to":"Exact Existing Title, SELF: other idea, or empty","how":"..."}],"questions":["..."]}"##;
 
 fn search_rule(s: &Settings) -> &'static str {
     if s.web_search {
@@ -1173,6 +1172,80 @@ async fn call_ai(
     }
 }
 
+// Model output commonly wraps targets in Obsidian links or omits SELF:.
+// Resolve only known targets; an optional unresolved relationship is omitted,
+// while the source-backed idea and its evidence are retained.
+fn normalize_plan_connections(mut d: Value, titles: &[String]) -> Value {
+    let names: Vec<String> = d["big_ideas"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter_map(|idea| idea["name"].as_str().map(str::to_owned))
+        .collect();
+    if let Some(ideas) = d["big_ideas"].as_array_mut() {
+        for idea in ideas {
+            if !idea.is_object() {
+                continue;
+            }
+            let raw = idea["connects_to"].as_str().unwrap_or("").trim();
+            let raw = raw
+                .strip_prefix("[[")
+                .and_then(|t| t.strip_suffix("]]"))
+                .unwrap_or(raw);
+            let target = raw.split('|').next().unwrap_or("").trim();
+            let explicit_self = target
+                .get(..5)
+                .is_some_and(|s| s.eq_ignore_ascii_case("SELF:"))
+                || target.starts_with('#');
+            let target = if target
+                .get(..5)
+                .is_some_and(|s| s.eq_ignore_ascii_case("SELF:"))
+            {
+                target[5..].trim()
+            } else {
+                target
+            };
+            let target = target
+                .trim_start_matches('#')
+                .split('#')
+                .next()
+                .unwrap_or("")
+                .trim();
+            let matches = |options: &[String]| -> Option<String> {
+                if let Some(exact) = options.iter().find(|name| name.as_str() == target) {
+                    return Some(exact.clone());
+                }
+                let mut found = options
+                    .iter()
+                    .filter(|name| name.eq_ignore_ascii_case(target));
+                let first = found.next()?;
+                if found.next().is_none() {
+                    Some(first.clone())
+                } else {
+                    None
+                }
+            };
+            let own = idea["name"].as_str().unwrap_or("");
+            let resolved = if !explicit_self {
+                matches(titles)
+            } else {
+                None
+            }
+            .or_else(|| {
+                matches(&names)
+                    .filter(|name| name != own)
+                    .map(|name| format!("SELF: {name}"))
+            })
+            .unwrap_or_default();
+            if resolved.is_empty() {
+                idea["how"] = json!("");
+            }
+            idea["connects_to"] = json!(resolved);
+        }
+    }
+    d
+}
+
 fn plan_check(d: &Value, titles: &[String]) -> Vec<String> {
     let mut p = vec![];
     let ideas = d["big_ideas"].as_array().cloned().unwrap_or_default();
@@ -1183,26 +1256,28 @@ fn plan_check(d: &Value, titles: &[String]) -> Vec<String> {
     if blob.contains("http://") || blob.contains("https://") || blob.contains("www.") {
         p.push("Remove all URLs / internet sources".to_string());
     }
-    let mut to_existing = false;
     for i in &ideas {
         let n = i["name"].as_str().unwrap_or("").trim();
         let t = i["connects_to"].as_str().unwrap_or("").trim();
         if n.is_empty() {
             p.push("A big idea has no name".to_string());
         }
-        if titles.iter().any(|x| x == t) {
-            to_existing = true;
-        } else if !t.starts_with("SELF:") {
-            p.push(format!("Big idea '{n}' connects to '{t}', which is not an existing note title or 'SELF: <other idea>'"));
+        if !t.is_empty() && !titles.iter().any(|x| x == t) {
+            let internal = t.strip_prefix("SELF:").map(str::trim);
+            if !internal.is_some_and(|target| {
+                target != n
+                    && ideas
+                        .iter()
+                        .any(|idea| idea["name"].as_str() == Some(target))
+            }) {
+                p.push(format!("Big idea '{n}' has an unresolved connection; use a known target or leave connects_to empty"));
+            }
         }
-        if i["how"].as_str().unwrap_or("").trim().is_empty() {
+        if !t.is_empty() && i["how"].as_str().unwrap_or("").trim().is_empty() {
             p.push(format!(
                 "Big idea '{n}' needs a 'how' explaining the connection"
             ));
         }
-    }
-    if !titles.is_empty() && !ideas.is_empty() && !to_existing {
-        p.push("At least one big idea must connect to an existing note".to_string());
     }
     p
 }
@@ -1419,7 +1494,16 @@ async fn attempt(
     let d = if plan.is_some() {
         normalize_internal_links(d, c.titles)
     } else {
-        d
+        let normalized = normalize_plan_connections(d.clone(), c.titles);
+        if normalized != d {
+            log(
+                c.a,
+                c.sid,
+                "tool",
+                json!({"name":"normalize_plan_connections", "output":"Standardized known note/section targets and omitted unresolved optional relationships; kept the ideas and evidence."}),
+            );
+        }
+        normalized
     };
     let mut probs = if plan.is_none() {
         plan_check(&d, c.titles)
@@ -1573,16 +1657,11 @@ fn write_note(
     j: &J,
     title: &str,
     pdfs: &[String],
-    tx: &str,
+    _tx: &str,
     d: &Value,
 ) -> AResult<()> {
     let mm = vault.join(&j.ct).join(&j.course).join("Mind Map Notes");
     std::fs::create_dir_all(&mm)?;
-    let quote = tx
-        .lines()
-        .map(|l| format!("> {l}"))
-        .collect::<Vec<_>>()
-        .join("\n");
     let summary = d["summary"]
         .as_str()
         .unwrap_or("")
@@ -1597,7 +1676,7 @@ fn write_note(
     let (ct, course, unit, lesson) = (&j.ct, &j.course, &j.unit, &j.lesson);
     let unit_name = safe(d["unit_name"].as_str().unwrap_or(""));
     let note = format!(
-        "---\ntitle: \"{title}\"\nclass_type: \"{ct}\"\ncourse: \"{course}\"\nunit: \"{unit}\"\nunit_name: \"{unit_name}\"\nlesson: \"{lesson}\"\nsummary: \"{summary}\"\nsource_pdf: \"{first}\"\ntags: [mindmap]\n---\n> [!info]- Session input (used to connect notes)\n> **Course:** {course} | **Unit:** {unit} {unit_name} | **Lesson:** {lesson} | **Class type:** {ct}\n> **Source PDF:** {links}\n>\n> **Transcribed notes**\n{quote}\n\n{}\n",
+        "---\ntitle: \"{title}\"\nclass_type: \"{ct}\"\ncourse: \"{course}\"\nunit: \"{unit}\"\nunit_name: \"{unit_name}\"\nlesson: \"{lesson}\"\nsummary: \"{summary}\"\nsource_pdf: \"{first}\"\ntags: [mindmap]\n---\n> **Course:** {course} | **Unit:** {unit} {unit_name} | **Lesson:** {lesson} | **Class type:** {ct}\n> **Source PDF:** {links}\n\n{}\n",
         d["body"].as_str().unwrap_or("")
     );
     std::fs::write(mm.join(format!("{title}.md")), note)?;
@@ -2596,6 +2675,70 @@ async fn lesson_delete(State(a): State<Arc<App>>, AxPath(id): AxPath<i64>) -> Js
 }
 
 #[derive(Deserialize)]
+struct FolderDelete {
+    class_type: String,
+    course: Option<String>,
+}
+fn validate_folder_component(value: &str) -> AResult<()> {
+    anyhow::ensure!(
+        !value.trim().is_empty()
+            && value != "."
+            && value != ".."
+            && !value.contains(['/', '\\', '\0']),
+        "Choose a subject or course folder"
+    );
+    Ok(())
+}
+fn reject_folder_symlinks(path: &Path) -> AResult<()> {
+    let metadata = std::fs::symlink_metadata(path)?;
+    anyhow::ensure!(
+        !metadata.file_type().is_symlink(),
+        "Folders containing symbolic links cannot be deleted here"
+    );
+    if metadata.is_dir() {
+        for entry in std::fs::read_dir(path)? {
+            reject_folder_symlinks(&entry?.path())?;
+        }
+    }
+    Ok(())
+}
+async fn delete_folder(State(a): State<Arc<App>>, Json(q): Json<FolderDelete>) -> R<Json<Value>> {
+    validate_folder_component(&q.class_type)?;
+    if let Some(course) = &q.course {
+        validate_folder_component(course)?;
+    }
+    let _guard = a
+        .busy
+        .try_lock()
+        .map_err(|_| anyhow!("A session is running; wait for it to finish before deleting"))?;
+    let vault = std::fs::canonicalize(a.vault().await)?;
+    let mut folder = vault.join(&q.class_type);
+    if let Some(course) = &q.course {
+        folder.push(course);
+    }
+    reject_folder_symlinks(&vault.join(&q.class_type))?;
+    let folder = std::fs::canonicalize(folder)?;
+    if !folder.starts_with(&vault) || folder == vault || !folder.is_dir() {
+        return Err(anyhow!("Folder must be inside the notes vault").into());
+    }
+    let ids = {
+        let db = a.db.lock().unwrap();
+        let mut statement = db
+            .prepare("SELECT id FROM sessions WHERE class_type=?1 AND (?2 IS NULL OR course=?2)")?;
+        let ids = statement
+            .query_map(params![q.class_type, q.course], |r| r.get::<_, i64>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        ids
+    };
+    for id in &ids {
+        let _ = delete_session_contents(&a, *id, true, false).await?;
+    }
+    std::fs::remove_dir_all(&folder)?;
+    rebuild_topic_indexes(&vault)?;
+    Ok(Json(json!({"ok":true,"deleted_sessions":ids.len()})))
+}
+
+#[derive(Deserialize)]
 struct DelQ {
     files: Option<bool>,
 }
@@ -2609,13 +2752,24 @@ async fn delete_session(
         .busy
         .try_lock()
         .map_err(|_| anyhow!("A session is running; wait for it to finish before deleting"))?;
-    let (j, title, pdf, _, _) = load_row(&a, id)?;
-    if q.files.unwrap_or(true) && !title.is_empty() {
+    delete_session_contents(&a, id, q.files.unwrap_or(true), true).await
+}
+
+async fn delete_session_contents(
+    a: &Arc<App>,
+    id: i64,
+    files: bool,
+    rebuild: bool,
+) -> R<Json<Value>> {
+    let (j, title, pdf, _, _) = load_row(a, id)?;
+    if files && !title.is_empty() {
         let cdir = a.vault().await.join(&j.ct).join(&j.course);
         let _ = std::fs::remove_file(cdir.join("Mind Map Notes").join(format!("{title}.md")));
         master_remove(&a, &j.ct, &title);
         let vault = a.vault().await;
-        master_file(&a, &vault, &j.ct);
+        if rebuild {
+            master_file(&a, &vault, &j.ct);
+        }
         for p in pdf.lines().filter(|p| !p.is_empty()) {
             let _ = std::fs::remove_file(cdir.join("Uploaded Notes").join(p));
         }
@@ -2626,7 +2780,7 @@ async fn delete_session(
             let _ = std::fs::write(&cd, kept.join("\n") + "\n");
         }
     }
-    if q.files.unwrap_or(true) {
+    if files {
         for file in pdf.lines().filter(|f| !f.is_empty()) {
             let _ = std::fs::remove_file(
                 a.vault()
@@ -2684,7 +2838,7 @@ async fn delete_session(
         params![id],
     );
     dbx(&a, "DELETE FROM sessions WHERE id=?1", params![id]);
-    if q.files.unwrap_or(true) {
+    if files && rebuild {
         rebuild_topic_indexes(&a.vault().await)?;
     }
     a.pending.lock().unwrap().remove(&id);
@@ -2846,7 +3000,7 @@ mod tests {
             &j,
             "Momentum",
             &["source.md".into()],
-            "Impulse changes momentum.",
+            "RAW TRANSCRIPT ONLY: original handwritten words.",
             &d,
         )
         .unwrap();
@@ -2855,6 +3009,9 @@ mod tests {
                 .unwrap();
         assert!(note.contains("unit: \"\"\nunit_name: \"Motion and Forces\""));
         assert!(note.contains("[[source.md]]"));
+        assert!(!note.contains("RAW TRANSCRIPT ONLY"));
+        assert!(!note.contains("Transcribed notes"));
+        assert!(!note.contains("Session input"));
         assert!(note.contains("[[Physics/BigIdeas|"));
         let index = std::fs::read_to_string(vault.join("Physics/Mechanics/BigIdeas.md")).unwrap();
         assert!(index.contains("[Momentum](<Mind%20Map%20Notes/Momentum.md>)"));
@@ -2863,6 +3020,64 @@ mod tests {
         std::fs::remove_dir_all(vault).unwrap();
     }
 
+    #[test]
+    fn bulk_plan_accepts_obsidian_links_and_internal_idea_names() {
+        let titles = vec!["Static Friction and Lab Data Analysis".into()];
+        for target in [
+            "[[Static Friction and Lab Data Analysis]]",
+            "[[Static Friction and Lab Data Analysis#Data|Earlier lab]]",
+            "static friction and lab data analysis",
+        ] {
+            let plan = normalize_plan_connections(
+                json!({"big_ideas":[{"name":"Static Friction", "evidence":"Page 1", "connects_to":target, "how":"Uses the same friction measurements"}]}),
+                &titles,
+            );
+            assert_eq!(plan["big_ideas"][0]["connects_to"], titles[0]);
+            assert!(plan_check(&plan, &titles).is_empty());
+        }
+        let plan = normalize_plan_connections(
+            json!({"big_ideas":[
+                {"name":"Ideal Rope Tension","evidence":"Page 1","connects_to":"Tension Definition and Properties","how":"Applies the definition"},
+                {"name":"Tension Definition and Properties","evidence":"Page 1","connects_to":"N/A"},
+                {"name":"Real Rope Tension Variation","evidence":"Page 2","connects_to":"Ideal Rope Tension","how":"Compares ideal and real ropes"}
+            ]}),
+            &titles,
+        );
+        assert_eq!(
+            plan["big_ideas"][0]["connects_to"],
+            "SELF: Tension Definition and Properties"
+        );
+        assert_eq!(
+            plan["big_ideas"][2]["connects_to"],
+            "SELF: Ideal Rope Tension"
+        );
+        assert!(plan_check(&plan, &titles).is_empty());
+    }
+    #[test]
+    fn unrelated_notes_do_not_force_links_or_discard_new_ideas() {
+        let titles = vec!["Unrelated Lab".into()];
+        for target in ["N/A", "", "Invented Note", "SELF: Missing Idea"] {
+            let plan = normalize_plan_connections(
+                json!({"big_ideas":[{"name":"Projectile Motion", "evidence":"Student page 3", "connects_to":target, "how":"Unsupported relationship"}]}),
+                &titles,
+            );
+            assert_eq!(plan["big_ideas"].as_array().unwrap().len(), 1);
+            assert_eq!(plan["big_ideas"][0]["evidence"], "Student page 3");
+            assert_eq!(plan["big_ideas"][0]["connects_to"], "");
+            assert_eq!(plan["big_ideas"][0]["how"], "");
+            assert!(plan_check(&plan, &titles).is_empty());
+        }
+        assert!(check(&json!({"title":"Projectile Motion","body":"## Motion\nObservations from the supplied page.","links":[]}), &titles).is_empty());
+        assert!(!plan_check(&json!({"big_ideas":[]}), &titles).is_empty());
+        let malformed =
+            normalize_plan_connections(json!({"big_ideas":["not an idea object",null]}), &titles);
+        assert!(!plan_check(&malformed, &titles).is_empty());
+        assert!(!check(
+            &json!({"title":"Motion","body":"[[Invented Note]]","links":[]}),
+            &titles
+        )
+        .is_empty());
+    }
     #[test]
     fn validates_author_output_without_an_ai_reviewer() {
         let valid = json!({"title":"Momentum", "body":"## Momentum\nImpulse changes momentum.\n```mermaid\nflowchart LR\nImpulse --> Momentum\n```", "links":[]});

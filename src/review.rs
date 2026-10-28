@@ -563,6 +563,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn legacy_transcript_is_removed_from_file_but_sources_stay_available() {
+        let f = Fixture::new();
+        let (sid, _) = f.pending();
+        let relative = "Math/PreCalculus/Mind Map Notes/Polynomials.md";
+        let file = f.root.join("vault").join(relative);
+        std::fs::create_dir_all(file.parent().unwrap()).unwrap();
+        let raw = "---\ntitle: Polynomials\n---\n> [!info]- Session input (used to connect notes)\n> **Course:** PreCalculus\n>\n> **Transcribed notes**\n> Original student notes\n> Second transcript line\n\n## Degree\nHuman-approved text.\n\n> A legitimate quote\n";
+        std::fs::write(&file, raw).unwrap();
+        f.app.db.lock().unwrap().execute("UPDATE sessions SET status='done',title='Polynomials',note_path=?1,transcript='Original student notes' WHERE id=?2",params![relative,sid]).unwrap();
+        save_originals(
+            &f.app,
+            sid,
+            &[("Original.md".into(), b"# Original upload".to_vec())],
+        )
+        .unwrap();
+        integration::clean_legacy_note_inputs(&f.app).await.unwrap();
+        let cleaned = std::fs::read_to_string(&file).unwrap();
+        assert!(cleaned.starts_with("---\ntitle: Polynomials\n---\n"));
+        assert!(!cleaned.contains("Transcribed notes"));
+        assert!(!cleaned.contains("Original student notes"));
+        assert!(cleaned.contains("Human-approved text."));
+        assert!(cleaned.contains("> A legitimate quote"));
+        let detail = session(State(f.app.clone()), AxPath(sid)).await.unwrap().0;
+        assert_eq!(detail["transcript"], "Original student notes");
+        assert_eq!(
+            original_files(&f.app, sid).unwrap()[0].1,
+            b"# Original upload"
+        );
+        integration::clean_legacy_note_inputs(&f.app).await.unwrap();
+        assert_eq!(std::fs::read_to_string(file).unwrap(), cleaned);
+    }
+
+    #[tokio::test]
     async fn imported_note_resolves_old_vault_and_survives_another_vault_change() {
         let f = Fixture::new();
         let (sid, _) = f.pending();

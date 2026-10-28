@@ -53,3 +53,11 @@ The vault root `BigIdeas.md` links to subject indexes such as `Math/BigIdeas.md`
 Approving a note adds its H2 big ideas. Reusing a heading adds another contribution to the existing subject idea page, and each note receives links back to its shared ideas. Matching ignores capitalization and repeated whitespace; different wording is not automatically treated as the same concept. The author is prompted to reuse an existing subject idea name when appropriate. Human edits remain authoritative.
 
 Indexes rebuild at startup, approval, vault selection and file deletion. Changed sections replace their earlier contributions, and stale generated pages are removed when no notes use them. Handwritten pages in the directory are retained. Historical course indexes and `Big Ideas.md` subject links still work. The in-app Big Ideas view opens shared pages and original note sections, with Back and Close controls. These files also work as Obsidian vault links.
+
+### Delete a notes folder
+
+In **Notes**, click **Delete** beside a subject or course folder. Confirm to permanently remove that folder, its subfolders, notes, original uploads, and associated review history and AI logs. Deletion is blocked while an import is processing. Saved notebook copies remain available.
+
+### View the original source
+
+Open a note and expand **View Source · Transcription or Original Upload**. Switch between **AI Transcription** and **Actual Upload**, and choose an uploaded file if there are several. Source material is kept separately from generated Markdown. On startup, StudyHub removes its legacy Session input transcript callout from existing tracked note files; saved transcriptions and original uploads are retained.

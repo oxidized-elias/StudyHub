@@ -13,6 +13,20 @@
 
 ## Start
 
+### GitHub Container Registry
+
+Pull the published Docker image:
+
+```bash
+docker pull ghcr.io/oxidized-elias/studyhub:sha-944ad9ff241a50c0e92013c5af2ada8db0e901ea
+```
+
+To use this image with the included Compose configuration:
+
+```bash
+STUDYHUB_IMAGE=ghcr.io/oxidized-elias/studyhub:sha-944ad9ff241a50c0e92013c5af2ada8db0e901ea docker compose up -d --no-build
+```
+
 ### Docker Compose
 
 Requires Docker and the Docker Compose plugin:

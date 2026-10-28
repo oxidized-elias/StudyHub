@@ -1,7 +1,7 @@
 const fs=require('fs'),vm=require('vm');
 const ts=require(process.env.TYPESCRIPT_RUNTIME||'typescript');
 const html=fs.readFileSync('web/index.html','utf8');
-const source=html.split('<script type="text/babel">')[1].split('</script>')[0].replace("ReactDOM.createRoot(document.getElementById('root')).render(<App/>);",'globalThis.UploadComponent=Upload;globalThis.ReviewComponent=Review;globalThis.HumanReviewComponent=HumanReview;globalThis.MdComponent=Md;globalThis.waitDiagrams=()=>diagramQueue;');
+const source=html.split('<script type="text/babel">')[1].split('</script>')[0].replace("ReactDOM.createRoot(document.getElementById('root')).render(<App/>);",'globalThis.ViewerComponent=Viewer;globalThis.SourcePreviewComponent=SourcePreview;globalThis.UploadComponent=Upload;globalThis.ReviewComponent=Review;globalThis.HumanReviewComponent=HumanReview;globalThis.MdComponent=Md;globalThis.waitDiagrams=()=>diagramQueue;');
 const compiled=ts.transpileModule(source,{fileName:'index.jsx',compilerOptions:{jsx:ts.JsxEmit.React,target:ts.ScriptTarget.ES2020},reportDiagnostics:true});
 if(compiled.diagnostics.length)throw Error('JSX diagnostics');
 async function test({failFirst=false,transportError=false,skipHuman=false,course='',subject=''}={}){
@@ -57,4 +57,19 @@ async function humanApproval(){
  const body=JSON.parse(requests[0][1].body);
  if(body.body!==edits.body||body.feedback!==edits.feedback||body.action!=='approve')throw Error('Human corrections were not submitted exactly');
 }
-(async()=>{await test();await test({skipHuman:true});await test({course:'Precalculus',subject:'Math'});await test({subject:'Physics'});await test({failFirst:true});await test({transportError:true});await noteLog(false);await noteLog(true);await humanApproval();console.log('PASS: JSX, bulk queue success/failure/recovery, note-only dark red log button, and exact human-review submission.');})().catch(e=>{console.error(e);process.exit(1)});
+function savedSourceViewer(){
+ let states=[],cursor=0;
+ const React={useState:init=>{const id=cursor++;return [states[id]===undefined?init:states[id],v=>states[id]=v]},useEffect:()=>{},createElement:(type,props,...children)=>({type,props:props||{},children})};
+ const context={window:{__APP_BASE__:'',__EMBEDDED__:false},React,MaterialUI:new Proxy({},{get:(_,k)=>k}),mermaid:{initialize(){}}};
+ vm.createContext(context);vm.runInContext(compiled.outputText,context);
+ const sources=[{url:'/original.pdf',type:'application/pdf',name:'Original.pdf'}];
+ let tree=context.SourcePreviewComponent({sources,transcript:'Saved transcript'});
+ if(!nodes(tree,n=>n.props.component==='iframe'&&n.props.src==='/original.pdf').length)throw Error('Original upload is missing');
+ const toggle=nodes(tree,n=>n.type==='ToggleButtonGroup')[0];
+ toggle.props.onChange(null,'transcript');cursor=0;
+ tree=context.SourcePreviewComponent({sources,transcript:'Saved transcript'});
+ if(!nodes(tree,n=>n.props.component==='pre'&&n.children.includes('Saved transcript')).length)throw Error('Transcription toggle failed');
+ if(nodes(tree,n=>n.props.component==='iframe').length)throw Error('Original remained visible in transcription mode');
+ if(!html.includes('component="details"')||!html.includes('View Source · Transcription or Original Upload'))throw Error('Collapsible saved source viewer is missing');
+}
+(async()=>{savedSourceViewer();await test();await test({skipHuman:true});await test({course:'Precalculus',subject:'Math'});await test({subject:'Physics'});await test({failFirst:true});await test({transportError:true});await noteLog(false);await noteLog(true);await humanApproval();console.log('PASS: JSX, bulk queue success/failure/recovery, note-only dark red log button, and exact human-review submission.');})().catch(e=>{console.error(e);process.exit(1)});
