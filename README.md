@@ -5,7 +5,7 @@
 <p align="center">
   Self-hosted Notes, Notebooks and AI Studying<br>
   Inspired by Gemini's learning tools and NotebookLM, with your own notes and choice of AI model<br>
-  Import your notes, connect big ideas, and turn them into guided lessons and practice
+  Import your notes, connect big ideas, and turn them into guided lessons and practice<br>
   Yes, this is vibecoded.
 </p>
 
