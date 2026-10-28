@@ -49,9 +49,7 @@ Open **http://localhost:8082**. The command above uses the published commit imag
 If running the application with a domain, add these environment options to `docker run` and configure your HTTPS reverse proxy to forward to port `8082`:
 
 ```bash
--e STUDYHUB_URL=https://study.example.com \
--e STUDYHUB_USER=admin \
--e STUDYHUB_PASSWORD='your-password'
+-e STUDYHUB_URL=https://study.example.com
 ```
 
 ### Dockerfile:
@@ -130,9 +128,9 @@ Docker stores application data in `/app/data` and approved notes in `/vault`. Th
 
 ## Application Security?
 
-StudyHub is designed as a single-user application. Set `STUDYHUB_PASSWORD` to enable HTTP Basic authentication, and use HTTPS through your reverse proxy when exposing it. You can also manage access through a service such as Cloudflare Zero Trust. Provider keys are stored in the server's data directory.
+Securing the instance is the user's responsibility. Manage access through your own reverse proxy, firewall or a service such as Cloudflare Zero Trust. Provider keys are stored in the server's data directory.
 
-See [configuration and operations](docs/CONFIGURATION.md) for authentication, environment settings and backups.
+See [configuration and operations](docs/CONFIGURATION.md) for environment settings and backups.
 
 ## Can I Use a Local Model?
 

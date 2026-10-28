@@ -6,8 +6,6 @@ import assert from 'node:assert/strict';
 const image=process.argv[2]||'studyhub:smoke';
 const name=`studyhub-smoke-${randomUUID().slice(0,8)}`;
 const volumes=[`${name}-data`,`${name}-vault`];
-const password=randomUUID();
-const authorization=`Basic ${Buffer.from(`smoke:${password}`).toString('base64')}`;
 function docker(args,{allowFailure=false}={}){
  const result=spawnSync('docker',args,{encoding:'utf8',timeout:120000});
  if(!allowFailure&&(result.error||result.status!==0))throw Error(result.error?.message||result.stderr.trim()||'Docker command failed');
@@ -16,7 +14,6 @@ function docker(args,{allowFailure=false}={}){
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 async function start(){
  docker(['run','-d','--init','--name',name,'-p','127.0.0.1::8082',
-  '-e','STUDYHUB_USER=smoke','-e',`STUDYHUB_PASSWORD=${password}`,
   '-v',`${volumes[0]}:/app/data`,'-v',`${volumes[1]}:/vault`,image]);
  const port=docker(['inspect','--format','{{(index (index .NetworkSettings.Ports "8082/tcp") 0).HostPort}}',name]);
  const base=`http://127.0.0.1:${port}`;
@@ -29,12 +26,12 @@ async function start(){
  throw Error('Container never became healthy');
 }
 async function request(base,path,options={}){
- return fetch(base+path,{...options,headers:{Authorization:authorization,'Content-Type':'application/json',...options.headers},signal:AbortSignal.timeout(10000)});
+ return fetch(base+path,{...options,headers:{'Content-Type':'application/json',...options.headers},signal:AbortSignal.timeout(10000)});
 }
 try{
  for(const volume of volumes)docker(['volume','create',volume]);
  let base=await start();
- assert.equal((await fetch(base+'/api/health')).status,401);
+ assert.equal((await fetch(base+'/api/health')).status,200);
  assert.equal((await request(base,'/api/health')).status,200);
  const logo=await request(base,'/logo.png');assert.equal(logo.status,200);assert.equal(logo.headers.get('content-type'),'image/png');
  assert.equal(Buffer.from(await logo.arrayBuffer()).subarray(0,8).toString('hex'),'89504e470d0a1a0a');
@@ -49,7 +46,7 @@ try{
  const restored=await request(base,`/learn/api/notebooks/${notebook.id}`);
  assert.equal(restored.status,200);assert.equal((await restored.json()).title,'Docker persistence check');
  assert.equal(docker(['exec',name,'node','-e',"process.stdout.write(require('node:fs').readFileSync('/vault/docker-smoke.txt','utf8'))"]),'persistent vault content');
- console.log('PASS: container health/authentication, bundled logo, non-root runtime, extraction tools, graceful stop, and data/vault persistence across recreation.');
+ console.log('PASS: container health, bundled logo, non-root runtime, extraction tools, graceful stop, and data/vault persistence across recreation.');
 }catch(error){
  console.error(error.message);
  console.error(docker(['logs','--tail','80',name],{allowFailure:true}));

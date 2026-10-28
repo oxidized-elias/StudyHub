@@ -32,13 +32,13 @@ python3 tests/smoke.py
 python3 tests/suite_smoke.py
 ```
 
-These integration smoke tests start the integrated executable, fake Ollama and temporary data directories. They need socket permission and make no paid model calls. The suite test covers source approval/import, generation, attempts/scoring, flashcards, revisions, sharing, tools and history. The socket-free Rust server tests additionally exercise real notes/learning initialization and in-memory integration, so routing/authentication can be verified in restricted environments.
+These integration smoke tests start the integrated executable, fake Ollama and temporary data directories. They need socket permission and make no paid model calls. The suite test covers source approval/import, generation, attempts/scoring, flashcards, revisions, sharing, tools and history. The socket-free Rust server tests additionally exercise real notes/learning initialization and in-memory integration, so routing can be verified in restricted environments.
 
 ## Test map
 
 - Rust notes tests: recovery, review durability, precise file ownership, style overrides, internal links and one-note log clearing.
 - Rust learning tests: provider adapters, citation normalization, source restrictions, attempts/answer visibility, timers, tools/canvas, cancellation, partial batches, history deletion, corrections, journals, recall and mastery scheduling.
-- Rust server tests: route prefixes/HTML injection, authentication on every module and internal notes dispatch.
+- Rust server tests: route prefixes/HTML injection, access to every module without a login and internal notes dispatch.
 - `launcher.test.mjs`: flags, paths, one binary build and help without side effects.
 - `ui.cjs`, `suite_ui.cjs`: upload/review behaviors, all JSX entry points, iframe handoff, canvas channels and empty states.
 - `request_audit.cjs`, `experience.cjs`, `keyboard.cjs`, `study_workflows.cjs`: input/attempt/tutorial/reference contracts.
@@ -47,7 +47,7 @@ These integration smoke tests start the integrated executable, fake Ollama and t
 
 ## Container checks
 
-`npm run test:docker-config` checks health/authentication logic and resolved Compose settings without a daemon. `docker build -t studyhub:smoke .` followed by `node tests/docker-smoke.mjs studyhub:smoke` checks the actual image, graceful shutdown, authentication and persistent data/vault mounts using disposable resources. The Docker Images workflow runs these checks on native amd64 and arm64 runners, then publishes their tested images and a combined GHCR manifest only for main/version refs. Pull requests never publish. See [Docker setup](DOCKER.md).
+`npm run test:docker-config` checks health-check logic and resolved Compose settings without a daemon. `docker build -t studyhub:smoke .` followed by `node tests/docker-smoke.mjs studyhub:smoke` checks the actual image, graceful shutdown and persistent data/vault mounts using disposable resources. The Docker Images workflow runs these checks on native amd64 and arm64 runners, then publishes their tested images and a combined GHCR manifest only for main/version refs. Pull requests never publish. See [Docker setup](DOCKER.md).
 
 ## Changes
 

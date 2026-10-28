@@ -55,4 +55,4 @@ This is the Obsidian-compatible starting point for future models and maintainers
 
 ## Verification
 
-Follow [development checks](DEVELOPMENT.md). The socket-free Rust integration tests cover nested routes, all-route authentication and in-memory notes configuration/import. UI harnesses cover behavioral contracts, not visual browser layout. Fake-model smoke tests require local listeners. Real providers and generated content require separate acceptance testing.
+Follow [development checks](DEVELOPMENT.md). The socket-free Rust integration tests cover nested routes, access without a login and in-memory notes configuration/import. UI harnesses cover behavioral contracts, not visual browser layout. Fake-model smoke tests require local listeners. Real providers and generated content require separate acceptance testing.

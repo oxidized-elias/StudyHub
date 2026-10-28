@@ -35,7 +35,7 @@ Rules:
 - Reuse an existing subject big-idea name as an H2 heading when it accurately describes the supplied content; this connects notes across courses. Do not merge distinct concepts just because their names are similar.
 - You may create your own section headings and organization; the content under them must still come only from the transcript.
 - Use valid Markdown with blank lines around fenced code blocks.
-- Do not generate Mermaid relationship diagrams. Explain ideas in the requested Note Style and connect related notes with inline [[links]]. A central BigIdeas.md topic index is maintained by the application.
+- Do not generate Mermaid relationship diagrams. Explain ideas in the requested Note Style and connect related notes with inline [[links]]. A central Big Ideas - Master List.md topic index is maintained by the application.
 - Do NOT include the user input block, a Connections section or a Links section. The "links" field in your JSON is only a checklist: every target in it must also appear inline in the body as [[Exact Title]].
 - A GUIDANCE section, if present, only steers which ideas to emphasize. Never answer questions, explain, clarify, or add content from it. Your only output is the note JSON.
 - If a CONFIRMED PLAN is present, write the note from it: every big idea section must match a plan item and keep its stated connection.
@@ -1619,6 +1619,7 @@ async fn generate(
                     ),
                 )
             })
+            .chain(idea_reader_files(vault, &j.ct)?)
             .collect(),
     };
     let c = Ctx {
@@ -1693,6 +1694,24 @@ struct Resume {
     files: Vec<String>,
 }
 
+fn idea_reader_files(vault: &Path, subject: &str) -> AResult<Vec<(String, String)>> {
+    let mut files = vec![(
+        "Big Ideas - Master List.md".into(),
+        format!("{subject}/Big Ideas - Master List.md"),
+    )];
+    files.extend(
+        big_ideas::catalog(vault)?
+            .into_iter()
+            .filter(|idea| idea["class_type"].as_str() == Some(subject))
+            .filter_map(|idea| {
+                idea["concept_path"]
+                    .as_str()
+                    .map(|path| (path.to_string(), path.to_string()))
+            }),
+    );
+    Ok(files)
+}
+
 // Lets the AIs read the full text of earlier notes in the topic (when the setting is on).
 struct Reader {
     vault: PathBuf,
@@ -1717,7 +1736,7 @@ impl Reader {
 }
 fn read_rule(s: &Settings) -> &'static str {
     if s.read_notes {
-        "\nTo judge how ideas connect you may read the full text of earlier notes in this topic: FIRST reply with only {\"read\":[\"Exact Note Title\"]} (max 3 titles). Use them only to judge connections; never copy their content into the new note."
+        "\nTo judge how ideas connect you may read the full text of earlier notes in this topic: FIRST reply with only {\"read\":[\"Exact Note Title or supplied Big Ideas file path\"]} (max 3 files). Read Big Ideas - Master List.md for this subject's index. Use them only to judge connections; never copy their content into the new note."
     } else {
         ""
     }
@@ -1793,7 +1812,11 @@ fn master_for(c: &Ctx<'_>) -> String {
         .map(|idea| {
             (
                 idea["name"].as_str().unwrap_or("").to_string(),
-                idea["summary"].as_str().unwrap_or("").to_string(),
+                format!(
+                    "{} (read: {})",
+                    idea["summary"].as_str().unwrap_or(""),
+                    idea["concept_path"].as_str().unwrap_or("")
+                ),
                 idea["notes"]
                     .as_array()
                     .into_iter()
@@ -1821,13 +1844,7 @@ fn master_for(c: &Ctx<'_>) -> String {
                 .map(|t| format!("[[{t}]]"))
                 .collect::<Vec<_>>()
                 .join(", ");
-            (
-                ov,
-                format!(
-                    "- {n} -> {links}: {}",
-                    sm.chars().take(100).collect::<String>()
-                ),
-            )
+            (ov, format!("- {n} -> {links}: {}", sm))
         })
         .collect();
     scored.sort_by(|a, b| b.0.cmp(&a.0));
@@ -3012,11 +3029,34 @@ mod tests {
         assert!(!note.contains("RAW TRANSCRIPT ONLY"));
         assert!(!note.contains("Transcribed notes"));
         assert!(!note.contains("Session input"));
-        assert!(note.contains("[[Physics/BigIdeas|"));
+        assert!(note.contains("[[Physics/Big Ideas - Master List|"));
         let index = std::fs::read_to_string(vault.join("Physics/Mechanics/BigIdeas.md")).unwrap();
         assert!(index.contains("[Momentum](<Mind%20Map%20Notes/Momentum.md>)"));
         assert!(!index.contains("mermaid"));
         assert!(note.contains("**Unit:**  Motion and Forces"));
+        let files = idea_reader_files(&vault, "Physics").unwrap();
+        let idea_path = files
+            .iter()
+            .find(|(name, _)| name != "Big Ideas - Master List.md")
+            .unwrap()
+            .0
+            .clone();
+        let reader = Reader {
+            vault: vault.clone(),
+            notes: files,
+        };
+        assert!(reader
+            .read("Big Ideas - Master List.md")
+            .unwrap()
+            .contains("Momentum"));
+        assert!(reader
+            .read(&idea_path)
+            .unwrap()
+            .contains("Impulse changes momentum."));
+        assert!(reader.read("Math/BigIdeas.md").is_none());
+        assert!(reader.read("../config.json").is_none());
+        assert!(read_rule(&Settings::default()).contains("Read Big Ideas - Master List.md"));
+
         std::fs::remove_dir_all(vault).unwrap();
     }
 

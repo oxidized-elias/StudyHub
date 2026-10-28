@@ -1,10 +1,10 @@
 # API reference
 
-Generated route/handler inventory. Regenerate with `python3 scripts/document-api.py`; CI checks it with `--check`. Paths below include the unified public prefix. GET routes also support HEAD through Axum. Authentication, when enabled, applies to every route, including shared materials. This is a trusted single-user API, with no per-user authorization.
+Generated route/handler inventory. Regenerate with `python3 scripts/document-api.py`; CI checks it with `--check`. Paths below include the unified public prefix. GET routes also support HEAD through Axum. Securing access is the user’s responsibility; there is no built-in login. This is a trusted single-user API, with no per-user authorization.
 
 ## Conventions
 
-JSON requests use `Content-Type: application/json`. Successful handlers return JSON unless they explicitly return HTML, source bytes or exports. Module errors normally return HTTP 400 with `{"error":"message"}`; authentication returns 401. Missing routes use 404. IDs are server-generated integers. Multipart uploads have a 64 MiB request limit. The handler and its request type are the authoritative contract for fields and validation.
+JSON requests use `Content-Type: application/json`. Successful handlers return JSON unless they explicitly return HTML, source bytes or exports. Module errors normally return HTTP 400 with `{"error":"message"}`. StudyHub has no built-in login. Missing routes use 404. IDs are server-generated integers. Multipart uploads have a 64 MiB request limit. The handler and its request type are the authoritative contract for fields and validation.
 
 ## Shell
 

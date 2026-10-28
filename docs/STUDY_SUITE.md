@@ -1,6 +1,6 @@
 # Architecture
 
-StudyHub is one application with three source modules. `node server.mjs` compiles and launches one native `study-hub` server. The notes and learning crates are libraries linked into that executable, not independent servers. There is one Tokio runtime, one listener, one authentication boundary and no proxy/supervisor layer. Historical `apps/` names remain to keep feature code easy to locate.
+StudyHub is one application with three source modules. `node server.mjs` compiles and launches one native `study-hub` server. The notes and learning crates are libraries linked into that executable, not independent servers. There is one Tokio runtime, one listener, no built-in login and no proxy/supervisor layer. Historical `apps/` names remain to keep feature code easy to locate.
 
 ```mermaid
 flowchart TD
@@ -22,7 +22,7 @@ flowchart TD
 | File | Responsibility |
 | --- | --- |
 | `server.mjs` | Flags, absolute data paths, Cargo build, one binary launch, signal forwarding and exit status. |
-| `apps/StudyHub/src/main.rs` | Initialize both libraries, nest routes, inject frontend base paths, authenticate every route, serve one listener and handle shutdown. |
+| `apps/StudyHub/src/main.rs` | Initialize both libraries, nest routes, inject frontend base paths, serve one listener and handle shutdown. |
 | `apps/StudyHub/web/index.html` | Unified navigation, persistent mounted frames, notifications, source-reference return navigation and tutorial entry. |
 | `src/lib.rs` | Notes settings/schema, author/vision calls, processing, vault indexes, upload/retry/kill and notes router initialization. |
 | `src/review.rs` | Durable human review, original sources, edit diffs and learned corrections. |
@@ -38,7 +38,7 @@ flowchart TD
 | `…/src/web_source.rs` | Bounded public-page fetch, address restrictions and DNS pinning. |
 | `apps/SelfHosted-AI_Tests/web/index.html` | Learning screens, rich inputs, attempts, artifacts, tutorial, history and sandbox UI. |
 
-The library `create_router` functions initialize each module once. Learn receives a clone of the Notes router and dispatches integration requests using Tower `oneshot`. It retains structured HTTP responses without opening sockets, exposing internal ports, or duplicating notes business logic. The optional export token is attached internally. Browser authentication still applies to every public route.
+The library `create_router` functions initialize each module once. Learn receives a clone of the Notes router and dispatches integration requests using Tower `oneshot`. It retains structured HTTP responses without opening sockets, exposing internal ports, or duplicating notes business logic. The optional export token is attached internally. Access security is managed by the instance owner.
 
 ## Processing and source ownership
 
@@ -79,11 +79,11 @@ Canvas artifacts store HTML/CSS/JavaScript; the server never executes that code.
 
 ## Scope
 
-This is a single-user trusted workspace. Authentication is optional HTTP Basic on the whole router; there are no tenants, roles, per-user data boundaries or background push delivery. See [operations](CONFIGURATION.md), [development](DEVELOPMENT.md), [study workflow details](LEARNING_WORKFLOWS.md), and [feature coverage](../apps/SelfHosted-AI_Tests/FEATURES.md). The prior separate-server deployment and sibling installer have been removed.
+This is a single-user trusted workspace. Securing access is the user’s responsibility; there is no built-in login, tenant separation or per-user access control. See [operations](CONFIGURATION.md), [development](DEVELOPMENT.md), [study workflow details](LEARNING_WORKFLOWS.md), and [feature coverage](../apps/SelfHosted-AI_Tests/FEATURES.md). The prior separate-server deployment and sibling installer have been removed.
 
 ## Shared subject concepts
 
-`src/big_ideas.rs` now owns filesystem-backed subject indexes and generated concept pages. Root `BigIdeas.md` links to `<subject>/BigIdeas.md`, which links to `<subject>/Big Ideas/<normalized idea>.md`. Each concept page collects source H2 section bodies across courses and links back using full vault paths and exact source headings. Note files receive an idempotent managed backlink block; integration exports exclude this navigation block from learning content. Fenced sample headings and navigation headings are excluded.
+`src/big_ideas.rs` now owns filesystem-backed subject indexes and generated concept pages. Root `BigIdeas.md` links to `<subject>/Big Ideas - Master List.md`, which links to `<subject>/Big Ideas/<normalized idea>.md`. Each concept page collects source H2 section bodies across courses and links back using full vault paths and exact source headings. Note files receive an idempotent managed backlink block; integration exports exclude this navigation block from learning content. Fenced sample headings and navigation headings are excluded.
 
 Idea matching normalizes case and whitespace only. Distinct wording requires the author/human to choose the shared heading, avoiding unverified semantic merges. Filename sanitization collisions receive deterministic hash suffixes. Rebuilds remove stale generated pages while retaining handwritten files. The old DB registry is retained for compatibility; both author prompt context and the visible catalog use the actual generated source-backed pages.
 

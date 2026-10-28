@@ -14,4 +14,7 @@ assert.match(result,/data-heading="Degree"/);assert.match(result,/data-note="Pol
 result=render('\ufeff---\r\ntitle: Example\r\n---\r\n## Hello\r\n\r\n- [x] done\n');assert.doesNotMatch(result,/title: Example/);assert.match(result,/<h2>Hello/);assert.match(result,/type="checkbox"/);
 result=render('[[Other|<img src=x onerror=alert(1)>]]');assert.doesNotMatch(result,/<img/);assert.match(result,/&lt;img/);
 result=render('> [!note] Parent\n> - list\n>\n> > [!tip] Child\n> > **nested**\n');assert.match(result,/<strong>nested/);assert.equal((result.match(/<details/g)||[]).length,2);
+result=render('## Motion\n\n<!-- studyhub:big-ideas:start -->\n[[Physics/Big Ideas - Master List|Physics big ideas]]\n- [[Physics/Big Ideas/motion|Motion]]\n<!-- studyhub:big-ideas:end -->');
+assert.doesNotMatch(result,/studyhub:big-ideas/);assert.match(result,/data-note="Physics\/Big Ideas - Master List"/);assert.match(result,/Physics big ideas/);
+result=render('```text\n<!-- studyhub:big-ideas:start -->\n```');assert.match(result,/studyhub:big-ideas:start/);
 console.log('PASS: real Markdown parsing and KaTeX math; folded/nested callouts, lists, tables, tasks, CRLF/frontmatter, wikilinks, code protection, tilde Mermaid fences and escaped aliases.');

@@ -44,15 +44,15 @@ History includes materials, conversations, attempts/results, jobs and journals. 
 
 Generation continues on the server while navigating the workspace. Open collapsed Live Session Logs for request stages, timing, retries and errors. Kill Task beneath the log panel cancels the active generation; a completed result is retained if it finishes first. Retry creates a new job. Warnings have close buttons; closing does not erase the underlying history.
 
-Completion/review/failure notifications appear in the inbox and as popups. Optional desktop notifications require browser permission. Notifications are checked while the application is open and visible, not through a background push service. Share and export controls are available on materials; shared links remain subject to workspace authentication and can be revoked.
+Completion/review/failure notifications appear in the inbox and as popups. Optional desktop notifications require browser permission. Notifications are checked while the application is open and visible, not through a background push service. Share and export controls are available on materials; shared links can be revoked. Access security is managed by the instance owner.
 
 ## Subject-wide big ideas
 
-The vault root `BigIdeas.md` links to subject indexes such as `Math/BigIdeas.md` and `Physics/BigIdeas.md`. Each subject index links to shared pages in its `Big Ideas/` directory. A page combines the approved H2 sections for that idea across every course in that subject, with direct links to each original note section. It preserves the separate contributions rather than inventing a combined explanation.
+The vault root `BigIdeas.md` links to subject indexes such as `Math/Big Ideas - Master List.md` and `Physics/Big Ideas - Master List.md`. Each subject index links to shared pages in its `Big Ideas/` directory. A page combines the approved H2 sections for that idea across every course in that subject, with direct links to each original note section. It preserves the separate contributions rather than inventing a combined explanation.
 
 Approving a note adds its H2 big ideas. Reusing a heading adds another contribution to the existing subject idea page, and each note receives links back to its shared ideas. Matching ignores capitalization and repeated whitespace; different wording is not automatically treated as the same concept. The author is prompted to reuse an existing subject idea name when appropriate. Human edits remain authoritative.
 
-Indexes rebuild at startup, approval, vault selection and file deletion. Changed sections replace their earlier contributions, and stale generated pages are removed when no notes use them. Handwritten pages in the directory are retained. Historical course indexes and `Big Ideas.md` subject links still work. The in-app Big Ideas view opens shared pages and original note sections, with Back and Close controls. These files also work as Obsidian vault links.
+Indexes rebuild at startup, approval, vault selection and file deletion. Changed sections replace their earlier contributions, and stale generated pages are removed when no notes use them. Handwritten pages in the directory are retained. Course indexes link to the subject master list. The former generated subject `BigIdeas.md` index and redundant `Big Ideas.md` shortcut are removed during rebuilding; handwritten files with those names are preserved. The in-app Big Ideas view opens shared pages and original note sections, with Back and Close controls. These files also work as Obsidian vault links.
 
 ### Delete a notes folder
 
@@ -61,3 +61,5 @@ In **Notes**, click **Delete** beside a subject or course folder. Confirm to per
 ### View the original source
 
 Open a note and expand **View Source · Transcription or Original Upload**. Switch between **AI Transcription** and **Actual Upload**, and choose an uploaded file if there are several. Source material is kept separately from generated Markdown. On startup, StudyHub removes its legacy Session input transcript callout from existing tracked note files; saved transcriptions and original uploads are retained.
+
+Big Ideas navigation links remain part of the vault, while internal maintenance markers are hidden in rendered notes. The note author receives a subject-specific idea catalog; with **Read Notes** enabled (the default), it can also request the subject’s `Big Ideas - Master List.md` index and the individual idea files listed in that catalog. These files help connect ideas; they do not replace the uploaded source as evidence for new note content.

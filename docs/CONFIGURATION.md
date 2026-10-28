@@ -13,8 +13,6 @@
 | `LEARNING_DATA_DIR` | `<DATA_DIR>/learning` | Notebook/history database and learning source originals. |
 | `VAULT_DIR` | `<DATA_DIR>/vault` | Initial vault path. Saved UI settings take precedence after configuration. |
 | `CARGO_TARGET_DIR` | `<repository>/target` | Build and executable directory. |
-| `STUDYHUB_USER` | `admin` | HTTP Basic username when a password is enabled. |
-| `STUDYHUB_PASSWORD` | unset | Enables authentication on the shell, both modules and their APIs. |
 | `NOTES_INTEGRATION_TOKEN` | unset | Optional compatibility export token. Internal calls supply it automatically. |
 
 Relative storage paths passed to the Node launcher resolve against the repository, not the current shell directory. The native executable can also be started directly; its relative paths follow its working directory.
@@ -25,7 +23,7 @@ The old `BIND`, `LEARNING_BIND`, `NOTES_URL`, `LEARNING_URL`, `NOTES_BIN`, `LEAR
 
 Configure profiles in AI Models & Settings. The form opens the saved active profile; **Save & Use Model** persists it and the active selection together. Existing profiles are edited in place, and the selection is restored after reload. The **Note Import Models** panel in the same settings page saves the importer’s provider, Ollama server address, note-writing model, and image/PDF reading model. Select an installed vision-capable model for reading pages, click **Save Note Import Models**, then retry failed uploads. API keys are kept when left blank and are never returned by this configuration endpoint. Supported adapters include Ollama, OpenAI, Claude, Gemini, DeepSeek and compatible chat endpoints. The model dropdown discovers installed Ollama or compatible-server models, with a custom identifier fallback. Cloud profiles use a saved/custom model identifier. Remote Ollama endpoints are supported. The notes importer has its own author/vision model selection because transcription may need a vision model.
 
-Provider keys and notes settings reside in server files/databases. Do not commit or publicly serve these directories. The learning profile API redacts keys. Notes settings are available to the authenticated workspace owner. This application has no separate roles or per-user access control.
+Provider keys and notes settings reside in server files/databases. Do not commit or publicly serve these directories. The learning profile API redacts keys. Notes settings are available through the workspace API. This application has no separate roles or per-user access control.
 
 Context length affects VRAM consumption; reducing it can improve GPU residency. The application does not force Ollama placement or unload models. Check Model Status and Live Session Logs for installation/load state, timing, retry reasons and provider errors. Logs exclude full prompts, responses and credentials; notes' own AI logs contain note content and are private user data.
 

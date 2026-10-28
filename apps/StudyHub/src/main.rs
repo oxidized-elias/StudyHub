@@ -2,12 +2,11 @@ use anyhow::Result;
 use axum::{
     body::{to_bytes, Body},
     http::{header, Request, StatusCode},
-    middleware::{from_fn, from_fn_with_state, Next},
+    middleware::{from_fn, Next},
     response::{Html, IntoResponse, Redirect, Response},
     routing::get,
     Json, Router,
 };
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use serde_json::json;
 
 fn inject(html: &str, prefix: &str) -> String {
@@ -48,31 +47,6 @@ async fn embedded(req: Request<Body>, next: Next, prefix: &'static str) -> Respo
     }
     response
 }
-async fn authenticate(
-    axum::extract::State(expected): axum::extract::State<Option<String>>,
-    req: Request<Body>,
-    next: Next,
-) -> Response {
-    if let Some(expected) = expected {
-        if req
-            .headers()
-            .get(header::AUTHORIZATION)
-            .and_then(|v| v.to_str().ok())
-            != Some(expected.as_str())
-        {
-            return (
-                StatusCode::UNAUTHORIZED,
-                [(
-                    header::WWW_AUTHENTICATE,
-                    "Basic realm=\"StudyHub\", charset=\"UTF-8\"",
-                )],
-                "Sign in to your study workspace",
-            )
-                .into_response();
-        }
-    }
-    next.run(req).await
-}
 fn browser_reset(html: &str, epoch: &str) -> String {
     // Only app-owned preferences/notifications are reset after a server data reset.
     let script = format!(
@@ -97,7 +71,7 @@ fn data_epoch() -> Result<String> {
     std::fs::write(path, &epoch)?;
     Ok(epoch)
 }
-fn router(notes: Router, learning: Router, authorization: Option<String>, epoch: &str) -> Router {
+fn router(notes: Router, learning: Router, epoch: &str) -> Router {
     let html = browser_reset(include_str!("../web/index.html"), epoch);
     let notes = notes.layer(from_fn(|req, next| embedded(req, next, "/notes")));
     let learning = learning.layer(from_fn(|req, next| embedded(req, next, "/learn")));
@@ -109,7 +83,6 @@ fn router(notes: Router, learning: Router, authorization: Option<String>, epoch:
         .route("/learn/", get(|| async { Redirect::temporary("/learn") }))
         .nest("/notes", notes)
         .nest("/learn", learning)
-        .layer(from_fn_with_state(authorization, authenticate))
 }
 async fn shutdown() {
     #[cfg(unix)]
@@ -137,40 +110,22 @@ async fn run() -> Result<()> {
     let listener = tokio::net::TcpListener::bind(&bind).await?;
     let notes = notes_web::create_router().await?;
     let learning = selfhosted_ai_tests::create_router(notes.clone()).await?;
-    let authorization = std::env::var("STUDYHUB_PASSWORD")
-        .ok()
-        .filter(|s| !s.is_empty())
-        .map(|password| {
-            format!(
-                "Basic {}",
-                BASE64.encode(format!(
-                    "{}:{password}",
-                    std::env::var("STUDYHUB_USER").unwrap_or_else(|_| "admin".into())
-                ))
-            )
-        });
     println!("StudyHub: http://{bind} (one server; notes and learning integrated)");
-    axum::serve(
-        listener,
-        router(notes, learning, authorization, &data_epoch()?),
-    )
-    .with_graceful_shutdown(shutdown())
-    .await?;
+    axum::serve(listener, router(notes, learning, &data_epoch()?))
+        .with_graceful_shutdown(shutdown())
+        .await?;
     Ok(())
 }
 #[cfg(test)]
 mod tests {
     use super::*;
     use tower::ServiceExt;
-    async fn request(app: Router, path: &str, auth: bool) -> Response {
-        let mut req = Request::builder().uri(path);
-        if auth {
-            req = req.header(header::AUTHORIZATION, "Basic test");
-        }
+    async fn request(app: Router, path: &str) -> Response {
+        let req = Request::builder().uri(path);
         app.oneshot(req.body(Body::empty()).unwrap()).await.unwrap()
     }
     #[tokio::test]
-    async fn unified_routes_render_with_prefixes_and_authenticate_every_module() {
+    async fn unified_routes_render_with_prefixes_without_a_login() {
         let module = || {
             Router::new()
                 .route(
@@ -179,7 +134,7 @@ mod tests {
                 )
                 .route("/api/health", get(|| async { Json(json!({"ok":true})) }))
         };
-        let app = router(module(), module(), Some("Basic test".into()), "test");
+        let app = router(module(), module(), "test");
         for path in [
             "/",
             "/api/health",
@@ -189,20 +144,16 @@ mod tests {
             "/learn/api/health",
         ] {
             assert_eq!(
-                request(app.clone(), path, false).await.status(),
-                StatusCode::UNAUTHORIZED
-            );
-            assert_eq!(
-                request(app.clone(), path, true).await.status(),
+                request(app.clone(), path).await.status(),
                 StatusCode::OK,
                 "{path}"
             );
         }
-        let shell = request(app.clone(), "/", true).await;
+        let shell = request(app.clone(), "/").await;
         let shell_body = to_bytes(shell.into_body(), 1_000_000).await.unwrap();
         assert!(String::from_utf8_lossy(&shell_body).contains("studyhub.data-epoch"));
         for prefix in ["/notes", "/learn"] {
-            let response = request(app.clone(), prefix, true).await;
+            let response = request(app.clone(), prefix).await;
             let body = to_bytes(response.into_body(), 10000).await.unwrap();
             assert!(String::from_utf8_lossy(&body)
                 .contains(&format!("window.__APP_BASE__=\"{prefix}\"")));
@@ -226,7 +177,7 @@ mod tests {
         let learn = selfhosted_ai_tests::create_router(notes.clone())
             .await
             .unwrap();
-        let app = router(notes, learn, Some("Basic test".into()), "test");
+        let app = router(notes, learn, "test");
         async fn json_request(
             app: Router,
             method: &str,
@@ -236,7 +187,6 @@ mod tests {
             let req = Request::builder()
                 .method(method)
                 .uri(path)
-                .header(header::AUTHORIZATION, "Basic test")
                 .header(header::CONTENT_TYPE, "application/json")
                 .body(Body::from(value.to_string()))
                 .unwrap();
@@ -315,7 +265,7 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("Human-approved source text"));
-        let original = request(app.clone(), "/learn/api/notes/1/pdf/source.md", true).await;
+        let original = request(app.clone(), "/learn/api/notes/1/pdf/source.md").await;
         assert_eq!(original.status(), StatusCode::OK);
         assert_eq!(
             to_bytes(original.into_body(), 1000).await.unwrap().as_ref(),
@@ -332,12 +282,7 @@ mod tests {
             .as_str()
             .unwrap()
             .contains("Human-approved source text"));
-        let denied = request(
-            app.clone(),
-            "/notes/api/vault/document?path=..%2Fconfig",
-            true,
-        )
-        .await;
+        let denied = request(app.clone(), "/notes/api/vault/document?path=..%2Fconfig").await;
         assert_eq!(denied.status(), StatusCode::BAD_REQUEST);
         let sibling = temp.join("vault/Topic/OtherCourse/keep.md");
         std::fs::create_dir_all(sibling.parent().unwrap()).unwrap();
@@ -352,7 +297,6 @@ mod tests {
                     Request::builder()
                         .method("DELETE")
                         .uri("/notes/api/vault/folder")
-                        .header("authorization", "Basic test")
                         .header("content-type", "application/json")
                         .body(Body::from(folder.to_string()))
                         .unwrap(),
@@ -374,7 +318,6 @@ mod tests {
                     Request::builder()
                         .method("DELETE")
                         .uri("/notes/api/vault/folder")
-                        .header("authorization", "Basic test")
                         .header("content-type", "application/json")
                         .body(Body::from(json!({"class_type":"Linked"}).to_string()))
                         .unwrap(),

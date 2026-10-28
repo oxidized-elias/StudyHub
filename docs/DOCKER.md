@@ -34,12 +34,10 @@ Continue passing the same env file for later Compose commands. Compose also read
 | `STUDYHUB_HOST` | `127.0.0.1` | Host interface for the published port; use `0.0.0.0` for LAN access. |
 | `STUDYHUB_PORT` | `8082` | Host port. |
 | `STUDYHUB_URL` | `http://localhost:<port>` | Public origin; set the real HTTPS origin behind a reverse proxy. |
-| `STUDYHUB_USER` | `admin` | Optional HTTP Basic username. |
-| `STUDYHUB_PASSWORD` | empty | Enables application authentication when set. |
 | `STUDYHUB_VAULT_PATH` | named volume | Optional absolute path to an existing vault on the host. |
 | `STUDYHUB_UID`, `STUDYHUB_GID` | `1000` | Image build user/group IDs for matching host folder ownership. |
 
-The application always listens on port 8082 **inside** the container, even when a different host port is published. The health check uses this internal port and supplies configured Basic credentials without putting them in its URL or command arguments. It requires both application modules to be initialized. See [Compose services](https://docs.docker.com/reference/compose-file/services/) for port, volume and service options.
+The application always listens on port 8082 **inside** the container, even when a different host port is published. The health check uses this internal port. It requires both application modules to be initialized. See [Compose services](https://docs.docker.com/reference/compose-file/services/) for port, volume and service options.
 
 ## Use a host Obsidian vault
 
@@ -65,7 +63,7 @@ The StudyHub container does not run model inference, so it does not require GPU 
 
 ## GitHub Container Registry images
 
-`.github/workflows/docker.yml` builds native **linux/amd64** and **linux/arm64** images. Each architecture must pass the container authentication/persistence smoke test before its tested image is staged in GHCR. The public multi-platform tags are created only after both architecture jobs succeed.
+`.github/workflows/docker.yml` builds native **linux/amd64** and **linux/arm64** images. Each architecture must pass the container startup/persistence smoke test before its tested image is staged in GHCR. The public multi-platform tags are created only after both architecture jobs succeed.
 
 | Event | Published tags |
 | --- | --- |
@@ -107,7 +105,7 @@ docker run -d --init --name studyhub \
   studyhub:local
 ```
 
-Both mounts are important: the vault is separate from other user data. Pass environment variables at runtime for authentication/public URLs. This command builds a local image. The GHCR instructions above apply after a successful image workflow run.
+Both mounts are important: the vault is separate from other user data. Set the public URL through environment variables at runtime. This command builds a local image. The GHCR instructions above apply after a successful image workflow run.
 
 ## Operations and backups
 
@@ -132,4 +130,4 @@ docker build -t studyhub:smoke .
 node tests/docker-smoke.mjs studyhub:smoke
 ```
 
-The smoke test uses disposable containers/volumes and no AI provider. It checks authenticated health, bundled logo, non-root execution, extraction commands, graceful shutdown, and notebook/vault persistence across container recreation, then removes only its test resources. CI builds and runs this test on a Docker-enabled runner. If the local Docker socket is inaccessible, Compose parsing and health-check logic can be tested, but the image build/runtime remains unverified until that test runs.
+The smoke test uses disposable containers/volumes and no AI provider. It checks health, bundled logo, non-root execution, extraction commands, graceful shutdown, and notebook/vault persistence across container recreation, then removes only its test resources. CI builds and runs this test on a Docker-enabled runner. If the local Docker socket is inaccessible, Compose parsing and health-check logic can be tested, but the image build/runtime remains unverified until that test runs.

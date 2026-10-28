@@ -138,7 +138,7 @@ pub(super) fn rebuild(vault: &Path) -> AResult<()> {
                 "# Notes: {}\n\n{}\n\n",
                 name(&course),
                 wiki(
-                    &format!("{subject_name}/BigIdeas"),
+                    &format!("{subject_name}/Big Ideas - Master List"),
                     "",
                     &format!("All {} big ideas", subject_name)
                 )
@@ -182,7 +182,10 @@ pub(super) fn rebuild(vault: &Path) -> AResult<()> {
             }
             write_changed(&course.join("BigIdeas.md"), &course_index)?;
         }
-        if notes.is_empty() && !subject.join("BigIdeas.md").exists() {
+        if notes.is_empty()
+            && !subject.join("Big Ideas - Master List.md").exists()
+            && !subject.join("BigIdeas.md").exists()
+        {
             continue;
         }
         let directory = subject.join("Big Ideas");
@@ -198,7 +201,7 @@ pub(super) fn rebuild(vault: &Path) -> AResult<()> {
                 wiki(&target, "", &idea.name),
                 idea.sources.len()
             ));
-            let mut page=format!("---\n{GENERATED}\n---\n# {}\n\n{}\n\nCollected from approved notes. Contributions retain their source; no AI synthesis is added.\n\n",idea.name,wiki(&format!("{subject_name}/BigIdeas"),"",&format!("All {subject_name} big ideas")));
+            let mut page=format!("---\n{GENERATED}\n---\n# {}\n\n{}\n\nCollected from approved notes. Contributions retain their source; no AI synthesis is added.\n\n",idea.name,wiki(&format!("{subject_name}/Big Ideas - Master List"),"",&format!("All {subject_name} big ideas")));
             for source in &idea.sources {
                 page.push_str(&format!(
                     "## {} — {}\n\nSource: {}\n\n{}\n\n",
@@ -225,7 +228,7 @@ pub(super) fn rebuild(vault: &Path) -> AResult<()> {
             let mut block = format!(
                 "\n\n{START}\n{}\n",
                 wiki(
-                    &format!("{subject_name}/BigIdeas"),
+                    &format!("{subject_name}/Big Ideas - Master List"),
                     "",
                     &format!("{subject_name} big ideas")
                 )
@@ -246,22 +249,36 @@ pub(super) fn rebuild(vault: &Path) -> AResult<()> {
             block.push('\n');
             write_changed(&path, &format!("{}{block}", without_links(&raw)))?;
         }
-        write_changed(&subject.join("BigIdeas.md"), &index)?;
-        // Retain the historical filename as a working link, not a second registry.
-        write_changed(
-            &subject.join("Big Ideas.md"),
-            &format!(
-                "# {subject_name} big ideas\n\n{}\n",
-                wiki(
-                    &format!("{subject_name}/BigIdeas"),
-                    "",
-                    "Open the subject index"
-                )
-            ),
-        )?;
+        write_changed(&subject.join("Big Ideas - Master List.md"), &index)?;
+        // Remove only files matching the old generated index and shortcut.
+        let old_index = subject.join("BigIdeas.md");
+        if std::fs::read_to_string(&old_index)
+            .unwrap_or_default()
+            .starts_with(&format!(
+                "# Big ideas: {subject_name}\n\nShared ideas from all courses in this subject."
+            ))
+        {
+            std::fs::remove_file(old_index)?;
+        }
+        let old_shortcut = subject.join("Big Ideas.md");
+        let shortcut = format!(
+            "# {subject_name} big ideas\n\n{}\n",
+            wiki(
+                &format!("{subject_name}/BigIdeas"),
+                "",
+                "Open the subject index"
+            )
+        );
+        if std::fs::read_to_string(&old_shortcut).ok().as_deref() == Some(shortcut.as_str()) {
+            std::fs::remove_file(old_shortcut)?;
+        }
         root.push_str(&format!(
             "- {}\n",
-            wiki(&format!("{subject_name}/BigIdeas"), "", &subject_name)
+            wiki(
+                &format!("{subject_name}/Big Ideas - Master List"),
+                "",
+                &subject_name
+            )
         ));
     }
     write_changed(&vault.join("BigIdeas.md"), &root)?;
@@ -412,7 +429,7 @@ mod tests {
             "## degree\nCompare the powers in standard form.\n\n```md\n## Not an idea\n```\n",
         );
         rebuild(&root).unwrap();
-        let index = std::fs::read_to_string(root.join("Math/BigIdeas.md")).unwrap();
+        let index = std::fs::read_to_string(root.join("Math/Big Ideas - Master List.md")).unwrap();
         assert_eq!(index.matches("Math/Big Ideas/degree|").count(), 1);
         assert!(index.contains("Math/Big Ideas/roots|"));
         let page = std::fs::read_to_string(root.join("Math/Big Ideas/degree.md")).unwrap();
@@ -433,6 +450,50 @@ mod tests {
         std::fs::remove_dir_all(root).unwrap();
     }
     #[test]
+    fn master_list_replaces_old_index_and_shortcut_and_updates_links() {
+        let root = fixture();
+        let file = note(
+            &root,
+            "Algebra",
+            "Functions",
+            "## Degree\nThe highest exponent.",
+        );
+        let subject = root.join("Math");
+        std::fs::write(subject.join("BigIdeas.md"), "# Big ideas: Math\n\nShared ideas from all courses in this subject. Each idea links to its contributing note sections.\n\n").unwrap();
+        std::fs::write(
+            subject.join("Big Ideas.md"),
+            "# Math big ideas\n\n[[Math/BigIdeas|Open the subject index]]\n",
+        )
+        .unwrap();
+        rebuild(&root).unwrap();
+        assert!(!subject.join("BigIdeas.md").exists());
+        assert!(!subject.join("Big Ideas.md").exists());
+        assert!(subject.join("Big Ideas - Master List.md").exists());
+        for path in [
+            file,
+            root.join("BigIdeas.md"),
+            subject.join("Algebra/BigIdeas.md"),
+            subject.join("Big Ideas/degree.md"),
+        ] {
+            let raw = std::fs::read_to_string(path).unwrap();
+            assert!(raw.contains("[[Math/Big Ideas - Master List|"));
+            assert!(!raw.contains("[[Math/BigIdeas|"));
+        }
+        std::fs::write(subject.join("Big Ideas.md"), "My handwritten ideas").unwrap();
+        std::fs::write(subject.join("BigIdeas.md"), "My other handwritten index").unwrap();
+        rebuild(&root).unwrap();
+        assert_eq!(
+            std::fs::read_to_string(subject.join("Big Ideas.md")).unwrap(),
+            "My handwritten ideas"
+        );
+        assert_eq!(
+            std::fs::read_to_string(subject.join("BigIdeas.md")).unwrap(),
+            "My other handwritten index"
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn regenerated_ideas_remove_old_contributions_and_preserve_handwritten_files() {
         let root = fixture();
         let source = note(&root, "Algebra", "Notes", "## Roots\nOld content.");
@@ -447,9 +508,11 @@ mod tests {
         rebuild(&root).unwrap();
         assert!(!root.join("Math/Big Ideas/degree.md").exists());
         assert!(catalog(&root).unwrap().is_empty());
-        assert!(!std::fs::read_to_string(root.join("Math/BigIdeas.md"))
-            .unwrap()
-            .contains("degree|"));
+        assert!(
+            !std::fs::read_to_string(root.join("Math/Big Ideas - Master List.md"))
+                .unwrap()
+                .contains("degree|")
+        );
         assert_ne!(filename("x^2"), filename("x2"));
         std::fs::remove_dir_all(root).unwrap();
     }

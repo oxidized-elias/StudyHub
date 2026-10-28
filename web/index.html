@@ -84,6 +84,9 @@ const mathHtml=(text,displayMode)=>{const clean=normalizeMath(text);if(typeof ka
 const render=(md,sid=0,nolink=false)=>{
  md=readableMathMarkdown(md);
  const parser=new marked.Marked({gfm:true,breaks:false,extensions:[
+  {name:'studyhubMarker',level:'block',start:src=>src.search(/^ {0,3}<!-- studyhub:big-ideas:(?:start|end) -->[ \t]*$/m),
+   tokenizer(src){const m=/^ {0,3}<!-- studyhub:big-ideas:(?:start|end) -->[ \t]*(?:\n|$)/.exec(src);if(m)return {type:'studyhubMarker',raw:m[0]};},renderer(){return ''}
+  },
   {name:'obsidianCallout',level:'block',start:src=>src.search(/^ {0,3}>[ \t]*\[!/m),
    tokenizer(src){
     const head=/^ {0,3}>[ \t]*\[!([\w-]+)\]([+-]?)[ \t]*([^\n]*)(?:\n|$)/.exec(src);if(!head)return;
@@ -551,10 +554,10 @@ function BigIdeas({sessions,onOpen}){
  const groups={};rows.forEach(r=>{(groups[r.class_type]=groups[r.class_type]||[]).push(r)});
  return <Box>
   <Typography variant="subtitle1">Master list of big ideas</Typography>
-  <Typography variant="caption" color="text.secondary" display="block" sx={{mb:1.5}}>Ideas are shared across courses within each subject. Open an idea to see its collected content and links to every contributing note section. The subject index is saved as BigIdeas.md.</Typography>
+  <Typography variant="caption" color="text.secondary" display="block" sx={{mb:1.5}}>Ideas are shared across courses within each subject. Open an idea to see its collected content and links to every contributing note section. The subject index is saved as Big Ideas - Master List.md.</Typography>
   {!rows.length&&<Typography color="text.secondary">No big ideas yet.</Typography>}
   {Object.entries(groups).map(([ct,rs])=><Box key={ct} sx={{mb:2}}>
-   <Button size="small" onClick={()=>window.dispatchEvent(new CustomEvent('vault-open',{detail:{path:ct+'/BigIdeas'}}))}>{'\uD83D\uDCC1 '+ct}</Button>
+   <Button size="small" onClick={()=>window.dispatchEvent(new CustomEvent('vault-open',{detail:{path:ct+'/Big Ideas - Master List'}}))}>{'\uD83D\uDCC1 '+ct}</Button>
    {rs.map(r=><Paper key={r.id} variant="outlined" sx={{p:1,mb:1}}>
     <Button size="small" onClick={()=>window.dispatchEvent(new CustomEvent('vault-open',{detail:{path:r.concept_path}}))}>{r.name}</Button>
     {r.summary&&<Typography variant="body2" color="text.secondary">{r.summary}</Typography>}

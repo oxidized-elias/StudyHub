@@ -18,8 +18,6 @@ services:
       LEARNING_DATA_DIR: /app/data/learning
       VAULT_DIR: /vault
       STUDYHUB_URL: ${STUDYHUB_URL:-http://localhost:${STUDYHUB_PORT:-8082}}
-      STUDYHUB_USER: ${STUDYHUB_USER:-admin}
-      STUDYHUB_PASSWORD: ${STUDYHUB_PASSWORD:-}
     volumes:
       - studyhub_data:/app/data
       - ${STUDYHUB_VAULT_PATH:-studyhub_vault}:/vault
