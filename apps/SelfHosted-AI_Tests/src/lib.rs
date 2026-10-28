@@ -267,24 +267,20 @@ async fn settings_get(State(a): State<Arc<App>>) -> Json<Value> {
     )
 }
 async fn settings_put(State(a): State<Arc<App>>, Json(v): Json<Value>) -> R<Json<Value>> {
-    let db = a.db.lock().unwrap();
-    for key in ["active_provider"] {
-        if let Some(s) = v.get(key) {
-            let s = s
-                .as_str()
-                .map(str::to_string)
-                .unwrap_or_else(|| s.to_string());
-            if key == "notes_url" {
-                let u = reqwest::Url::parse(&s)?;
-                if !["http", "https"].contains(&u.scheme()) {
-                    return Err(anyhow!("Notes URL must use HTTP(S)").into());
-                }
-            }
-            db.execute("INSERT INTO settings(key,value)VALUES(?1,?2)ON CONFLICT(key)DO UPDATE SET value=excluded.value",params![key,s])?;
+    if let Some(value) = v.get("active_provider") {
+        let id = value
+            .as_i64()
+            .or_else(|| value.as_str().and_then(|s| s.parse().ok()))
+            .ok_or_else(|| anyhow!("Choose a saved model profile"))?;
+        if id <= 0 {
+            return Err(anyhow!("Choose a saved model profile").into());
         }
+        provider(&a, id)?;
+        a.db.lock().unwrap().execute("INSERT INTO settings(key,value)VALUES('active_provider',?1)ON CONFLICT(key)DO UPDATE SET value=excluded.value",[id.to_string()])?;
     }
     Ok(Json(json!({"ok":true})))
 }
+
 async fn providers_get(State(a): State<Arc<App>>) -> R<Json<Value>> {
     let db = a.db.lock().unwrap();
     let mut st = db.prepare("SELECT id,data FROM providers ORDER BY id")?;
@@ -302,6 +298,9 @@ async fn providers_get(State(a): State<Arc<App>>) -> R<Json<Value>> {
     Ok(Json(json!(rows)))
 }
 async fn providers_put(State(a): State<Arc<App>>, Json(mut p): Json<Provider>) -> R<Json<Value>> {
+    p.label = p.label.trim().to_string();
+    p.model = p.model.trim().to_string();
+    p.base_url = p.base_url.trim().to_string();
     if p.id > 0 && p.api_key.is_empty() {
         let old = provider(&a, p.id)?;
         if old.kind == p.kind && old.base_url == p.base_url {
@@ -309,9 +308,10 @@ async fn providers_put(State(a): State<Arc<App>>, Json(mut p): Json<Provider>) -
         }
     }
     p.validate()?;
-    let db = a.db.lock().unwrap();
+    let mut db = a.db.lock().unwrap();
+    let transaction = db.transaction()?;
     if p.id > 0 {
-        if db.execute(
+        if transaction.execute(
             "UPDATE providers SET data=?1 WHERE id=?2",
             params![serde_json::to_string(&p)?, p.id],
         )? == 0
@@ -319,15 +319,14 @@ async fn providers_put(State(a): State<Arc<App>>, Json(mut p): Json<Provider>) -
             return Err(anyhow!("Provider profile not found").into());
         }
     } else {
-        db.execute(
+        transaction.execute(
             "INSERT INTO providers(data)VALUES(?1)",
             [serde_json::to_string(&p)?],
         )?;
-        p.id = db.last_insert_rowid();
+        p.id = transaction.last_insert_rowid();
     }
-    if db.query_row("SELECT COUNT(*) FROM providers", [], |r| r.get::<_, i64>(0))? == 1 {
-        db.execute("INSERT INTO settings(key,value)VALUES('active_provider',?1)ON CONFLICT(key)DO UPDATE SET value=excluded.value",[p.id.to_string()])?;
-    }
+    transaction.execute("INSERT INTO settings(key,value)VALUES('active_provider',?1)ON CONFLICT(key)DO UPDATE SET value=excluded.value",[p.id.to_string()])?;
+    transaction.commit()?;
     Ok(Json(p.public()))
 }
 async fn provider_models(State(a): State<Arc<App>>, Json(mut p): Json<Provider>) -> R<Json<Value>> {
@@ -904,5 +903,93 @@ mod notes_response_tests {
             decode_notes_response(reqwest::StatusCode::OK, br#"{"id":3}"#).unwrap()["id"],
             3
         );
+    }
+}
+
+#[cfg(test)]
+mod profile_persistence_tests {
+    use super::*;
+    fn open(dir: &Path) -> Arc<App> {
+        std::fs::create_dir_all(dir).unwrap();
+        let db = Connection::open(dir.join("learning.db")).unwrap();
+        schema(&db).unwrap();
+        Arc::new(App {
+            db: Mutex::new(db),
+            http: reqwest::Client::new(),
+            dir: dir.into(),
+            locks: Mutex::new(HashSet::new()),
+        })
+    }
+    #[tokio::test]
+    async fn profile_edit_stays_saved_and_active_after_reopening_database() {
+        let dir = std::env::temp_dir().join(format!(
+            "studyhub-profile-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let app = open(&dir);
+        let p = Provider {
+            id: 0,
+            label: " My local model ".into(),
+            kind: "ollama".into(),
+            base_url: "http://127.0.0.1:11434".into(),
+            model: " first-model ".into(),
+            api_key: "test-stored-token".into(),
+            context: 8192,
+        };
+        let saved = providers_put(State(app.clone()), Json(p)).await.unwrap().0;
+        let id = saved["id"].as_i64().unwrap();
+        assert_eq!(saved["model"], "first-model");
+        assert!(saved.get("api_key").is_none());
+        let edited = Provider {
+            id,
+            label: "Local model".into(),
+            kind: "ollama".into(),
+            base_url: "http://127.0.0.1:11434".into(),
+            model: "gemma4:e4b".into(),
+            api_key: String::new(),
+            context: 16384,
+        };
+        let _ = providers_put(State(app.clone()), Json(edited))
+            .await
+            .unwrap();
+        assert_eq!(provider(&app, id).unwrap().api_key, "test-stored-token");
+        let second = Provider {
+            id: 0,
+            label: "Other".into(),
+            kind: "ollama".into(),
+            base_url: "http://127.0.0.1:11434".into(),
+            model: "other-model".into(),
+            context: 8192,
+            ..Provider::default()
+        };
+        let second = providers_put(State(app.clone()), Json(second))
+            .await
+            .unwrap()
+            .0["id"]
+            .as_i64()
+            .unwrap();
+        assert_eq!(setting(&app, "active_provider", "0"), second.to_string());
+        let _ = settings_put(State(app.clone()), Json(json!({"active_provider":id})))
+            .await
+            .unwrap();
+        assert!(
+            settings_put(State(app.clone()), Json(json!({"active_provider":99999})))
+                .await
+                .is_err()
+        );
+        drop(app);
+        let reopened = open(&dir);
+        assert_eq!(setting(&reopened, "active_provider", "0"), id.to_string());
+        assert_eq!(provider(&reopened, id).unwrap().model, "gemma4:e4b");
+        let profiles = providers_get(State(reopened.clone())).await.unwrap().0;
+        assert_eq!(profiles.as_array().unwrap().len(), 2);
+        assert_eq!(profiles[0]["api_key_set"], true);
+        assert!(!profiles.to_string().contains("test-stored-token"));
+        drop(reopened);
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }

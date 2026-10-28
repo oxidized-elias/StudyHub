@@ -1,7 +1,7 @@
 name: studyhub
 services:
   studyhub:
-    image: studyhub:local
+    image: ${STUDYHUB_IMAGE:-studyhub:local}
     build:
       context: .
       args:

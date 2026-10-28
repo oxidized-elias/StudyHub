@@ -63,6 +63,37 @@ Set provider/model URLs in the application, as with a manual install:
 
 The StudyHub container does not run model inference, so it does not require GPU passthrough. GPU placement is managed by your Ollama/model server. Browser libraries still load from pinned CDNs; local model inference does not make the browser assets offline.
 
+## GitHub Container Registry images
+
+`.github/workflows/docker.yml` builds native **linux/amd64** and **linux/arm64** images. Each architecture must pass the container authentication/persistence smoke test before its tested image is staged in GHCR. The public multi-platform tags are created only after both architecture jobs succeed.
+
+| Event | Published tags |
+| --- | --- |
+| Push to `main` | `latest`, `main`, `sha-<full commit SHA>` |
+| Version tag such as `v1.2.3` | `1.2.3`, `1.2`, `1`, `sha-<full commit SHA>` |
+| Prerelease such as `v1.2.3-rc.1` | Exact prerelease version and commit SHA, without stable version aliases. |
+| Pull request | Build/test both architectures; no registry login or publication. |
+| Actions → Docker Images → Run workflow | Build/test; publishes when running on `main` or a version-tag ref. |
+
+Version tags do not replace `latest`; only `main` updates that tag. Major `0` is not published as a floating alias. Per-run `build-<run id>-<attempt>-amd64/arm64` tags retain the exact tested architecture images used to create the manifest.
+
+The registry path is derived from the repository name and normalized to lowercase: **`ghcr.io/oxidized-elias/studyhub`** for this repository. Publishing uses GitHub's built-in `GITHUB_TOKEN` with job-scoped package write access, not a new personal token. GitHub package/organization policies can still restrict publication. See [GitHub's image publishing documentation](https://docs.github.com/en/actions/tutorials/publish-packages/publish-docker-images).
+
+After the first successful publication, check the package's visibility in GitHub Packages. Anonymous pulls require a public package; a private package requires a Docker login. To use the published image with Compose, add this to `.env.docker`:
+
+```dotenv
+STUDYHUB_IMAGE=ghcr.io/oxidized-elias/studyhub:latest
+```
+
+Then pull and start without rebuilding:
+
+```bash
+docker compose --env-file .env.docker pull
+docker compose --env-file .env.docker up -d --no-build
+```
+
+Use a version or commit tag instead of `latest` to select a particular build. Existing volumes remain attached. A local build is still available with the default `studyhub:local` image. The workflow must first be committed/pushed to GitHub; adding it locally does not publish an image.
+
 ## Plain Docker
 
 ```bash
@@ -76,7 +107,7 @@ docker run -d --init --name studyhub \
   studyhub:local
 ```
 
-Both mounts are important: the vault is separate from other user data. Pass environment variables at runtime for authentication/public URLs. The image is built locally; no published registry image is assumed.
+Both mounts are important: the vault is separate from other user data. Pass environment variables at runtime for authentication/public URLs. This command builds a local image. The GHCR instructions above apply after a successful image workflow run.
 
 ## Operations and backups
 

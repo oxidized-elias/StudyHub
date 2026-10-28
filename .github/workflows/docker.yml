@@ -1,21 +1,150 @@
-name: Docker
+name: Docker Images
+
 on:
   push:
+    branches: [main]
+    tags: ['v*.*.*']
   pull_request:
   workflow_dispatch:
+
 permissions:
   contents: read
+
+# Serialize releases for each ref; a newer PR run can replace an obsolete PR build.
+concurrency:
+  group: docker-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   image:
-    runs-on: ubuntu-latest
+    name: Build and test (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            platform: linux/amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            platform: linux/arm64
+            runner: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
         with:
           node-version: '24'
+          package-manager-cache: false
+      - uses: docker/setup-buildx-action@v4
+      - name: Set image name
+        id: image
+        shell: bash
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - name: Image labels
+        id: labels
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ steps.image.outputs.name }}
+          tags: type=sha,format=long
       - name: Validate Compose and health checks
         run: npm run test:docker-config
-      - name: Build image
-        run: docker build -t studyhub:smoke .
+      - name: Build native image for testing
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          load: true
+          push: false
+          tags: studyhub:smoke
+          labels: ${{ steps.labels.outputs.labels }}
+          cache-from: type=gha,scope=studyhub-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=studyhub-${{ matrix.arch }}
       - name: Test authentication and persistence
         run: node tests/docker-smoke.mjs studyhub:smoke
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Stage the tested image
+        if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}
+          STAGING_TAG: build-${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.arch }}
+        shell: bash
+        run: |
+          docker tag studyhub:smoke "$IMAGE:$STAGING_TAG"
+          docker push "$IMAGE:$STAGING_TAG"
+
+  publish:
+    name: Publish multi-platform tags
+    needs: image
+    if: github.event_name != 'pull_request' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: docker/setup-buildx-action@v4
+      - name: Set image name
+        id: image
+        shell: bash
+        run: echo "name=ghcr.io/${GITHUB_REPOSITORY,,}" >> "$GITHUB_OUTPUT"
+      - name: Image tags and labels
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ steps.image.outputs.name }}
+          # Only main updates latest. Version tags never replace main's latest image.
+          flavor: latest=false
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}},enable=${{ !startsWith(github.ref, 'refs/tags/v0.') }}
+            type=sha,format=long
+      - name: Log in to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Publish manifest from both tested architectures
+        env:
+          IMAGE: ${{ steps.image.outputs.name }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+          STAGING_TAG: build-${{ github.run_id }}-${{ github.run_attempt }}
+        shell: bash
+        run: |
+          mapfile -t tags <<< "$TAGS"
+          [[ ${#tags[@]} -gt 0 && -n "${tags[0]}" ]]
+          arguments=()
+          for tag in "${tags[@]}"; do
+            arguments+=(--tag "$tag")
+          done
+          docker buildx imagetools create "${arguments[@]}" \
+            "$IMAGE:$STAGING_TAG-amd64" \
+            "$IMAGE:$STAGING_TAG-arm64"
+          docker buildx imagetools inspect "${tags[0]}"
+      - name: Summarize published image
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+        shell: bash
+        run: |
+          {
+            echo '### Published StudyHub images'
+            echo 'Platforms: linux/amd64, linux/arm64'
+            echo '```text'
+            printf '%s\n' "$TAGS"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

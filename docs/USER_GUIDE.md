@@ -2,7 +2,7 @@
 
 ## Settings and onboarding
 
-Start the interactive tutorial on a fresh installation. It points to actual controls and advances with your actions. Completed onboarding is hidden in Settings until replayed. Choose a study model profile, test the connection, select a host-system Obsidian vault folder, and choose the default Note Style. Bullet Points emphasizes short lists; Text Chunks uses paragraphs; Combined uses light explanation with bullets. Notes can override this individually.
+Start the interactive tutorial on a fresh installation. It points to actual controls and advances with your actions. Completed onboarding is hidden in Settings until replayed. Choose a study model profile, use **Save & Use Model** to save and activate it, test the connection, select a host-system Obsidian vault folder, and choose the default Note Style. Bullet Points emphasizes short lists; Text Chunks uses paragraphs; Combined uses light explanation with bullets. Notes can override this individually.
 
 ## Notes and human review
 

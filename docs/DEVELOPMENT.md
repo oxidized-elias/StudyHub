@@ -47,7 +47,7 @@ These integration smoke tests start the integrated executable, fake Ollama and t
 
 ## Container checks
 
-`npm run test:docker-config` checks health/authentication logic and resolved Compose settings without a daemon. `docker build -t studyhub:smoke .` followed by `node tests/docker-smoke.mjs studyhub:smoke` checks the actual image, graceful shutdown, authentication and persistent data/vault mounts using disposable resources. The dedicated Docker CI workflow runs these checks on a Docker-enabled runner. See [Docker setup](DOCKER.md).
+`npm run test:docker-config` checks health/authentication logic and resolved Compose settings without a daemon. `docker build -t studyhub:smoke .` followed by `node tests/docker-smoke.mjs studyhub:smoke` checks the actual image, graceful shutdown, authentication and persistent data/vault mounts using disposable resources. The Docker Images workflow runs these checks on native amd64 and arm64 runners, then publishes their tested images and a combined GHCR manifest only for main/version refs. Pull requests never publish. See [Docker setup](DOCKER.md).
 
 ## Changes
 

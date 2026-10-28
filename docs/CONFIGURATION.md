@@ -23,7 +23,7 @@ The old `BIND`, `LEARNING_BIND`, `NOTES_URL`, `LEARNING_URL`, `NOTES_BIN`, `LEAR
 
 ## Models
 
-Configure profiles in AI Models & Settings. Supported adapters include Ollama, OpenAI, Claude, Gemini, DeepSeek and compatible chat endpoints. The model dropdown discovers installed Ollama or compatible-server models, with a custom identifier fallback. Cloud profiles use a saved/custom model identifier. Remote Ollama endpoints are supported. The notes importer has its own author/vision model selection because transcription may need a vision model.
+Configure profiles in AI Models & Settings. The form opens the saved active profile; **Save & Use Model** persists it and the active selection together. Existing profiles are edited in place, and the selection is restored after reload. The notes importer retains its separate author/vision settings. Supported adapters include Ollama, OpenAI, Claude, Gemini, DeepSeek and compatible chat endpoints. The model dropdown discovers installed Ollama or compatible-server models, with a custom identifier fallback. Cloud profiles use a saved/custom model identifier. Remote Ollama endpoints are supported. The notes importer has its own author/vision model selection because transcription may need a vision model.
 
 Provider keys and notes settings reside in server files/databases. Do not commit or publicly serve these directories. The learning profile API redacts keys. Notes settings are available to the authenticated workspace owner. This application has no separate roles or per-user access control.
 
