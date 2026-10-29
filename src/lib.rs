@@ -27,6 +27,7 @@ use review::*;
 // ---------- prompts ----------
 const AI1: &str = r##"You convert a student's transcribed physical notes into exactly ONE Obsidian note (Markdown) for a linked knowledge vault.
 Rules:
+- Coordinate-plane graphs: preserve them as fenced ```graph blocks containing JSON: {"title":"Graph", "x":[-5,5], "y":[-5,5], "xLabel":"x", "yLabel":"y", "series":[{"type":"line", "label":"visible curve", "points":[[-2,4],[0,0,"origin"],[2,4]]}]}. Use type "points" for unconnected points and separate line series for discontinuous branches; line series connect samples with straight segments. Record only coordinates readable from the source, never invent an equation or exact samples from an unclear sketch. State uncertainty in prose and use [UNCLEAR: graph details] when scale or coordinates cannot be read. All coordinates must be within the stated numeric axis ranges; preserve labels and negative values. Keep these blocks intact through note generation and revision. Do not turn coordinate graphs into Mermaid flowcharts.
 - Use ONLY content from the TRANSCRIPT and USER INPUT. Never add facts, sources, citations or URLs from the internet or your own knowledge. Outside knowledge may only help you decide which ideas are the big ideas.
 - Create exactly ONE note. Big ideas are H2 sections (## headings) inside it, never extra notes.
 - For sections within THIS note use [[#Exact Heading]] (or plain prose), never [[Heading]] or entries in the external "links" array.
@@ -43,7 +44,7 @@ Rules:
 Infer a concise unit_name from the supplied notes and context; never invent a unit number.
 Reply with JSON only: {"title":"...","unit_name":"...","summary":"one sentence","body":"markdown","links":[{"target":"Exact Title","how":"how the ideas connect"}]}"##;
 
-const TRANSCRIBE: &str = "Transcribe the notes in this image exactly as written, keeping headings, lists and structure. Describe drawings/diagrams in [brackets]. Output plain text only; add nothing. If you cannot read a word, symbol or part of a drawing with confidence, never guess: write [UNCLEAR: where it is and what it looks like] in its place (at most 5 per page).";
+const TRANSCRIBE: &str = "Transcribe the notes in this image exactly as written, keeping headings, lists and structure. Describe other drawings/diagrams in [brackets]. Coordinate-plane graphs: preserve them as fenced ```graph blocks containing JSON: {\"title\":\"Graph\", \"x\":[-5,5], \"y\":[-5,5], \"xLabel\":\"x\", \"yLabel\":\"y\", \"series\":[{\"type\":\"line\", \"label\":\"visible curve\", \"points\":[[-2,4],[0,0,\"origin\"],[2,4]]}]}. Use type \"points\" for unconnected points and separate line series for discontinuous branches; line series connect samples with straight segments. Record only coordinates readable from the source, never invent an equation or exact samples from an unclear sketch. State uncertainty in prose and use [UNCLEAR: graph details] when scale or coordinates cannot be read. All coordinates must be within the stated numeric axis ranges; preserve labels and negative values. Keep these blocks intact through note generation and revision. Do not turn coordinate graphs into Mermaid flowcharts. Output Markdown transcription only; add nothing. If you cannot read a word, symbol or part of a drawing with confidence, never guess: write [UNCLEAR: where it is and what it looks like] in its place (at most 5 per page).";
 
 // ---------- settings ----------
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -113,7 +114,10 @@ impl Default for Settings {
         Self {
             provider: "ollama".into(),
             keys: HashMap::new(),
-            ollama_url: "http://127.0.0.1:11434".into(),
+            ollama_url: std::env::var("STUDYHUB_OLLAMA_URL")
+                .ok()
+                .filter(|url| !url.trim().is_empty())
+                .unwrap_or_else(|| "http://127.0.0.1:11434".into()),
             models,
             ai1_ctx: 8192,
             extra_prompt: String::new(),
@@ -293,6 +297,7 @@ pub async fn create_router() -> AResult<Router> {
         .route("/api/models", get(models))
         .route("/api/lookup", get(lookup))
         .route("/api/submit", post(submit))
+        .route("/api/notes", post(create_note))
         .route("/api/review/sessions", get(sessions))
         .route(
             "/api/review/session/:id/style",
@@ -2558,6 +2563,74 @@ async fn clear_logs(State(a): State<Arc<App>>, AxPath(id): AxPath<i64>) -> R<Jso
 }
 
 // ---------- review endpoints ----------
+#[derive(Deserialize)]
+struct NewNote {
+    title: String,
+    class_type: String,
+    course: String,
+    body: String,
+}
+
+async fn create_note(State(a): State<Arc<App>>, Json(note): Json<NewNote>) -> R<Json<Value>> {
+    use std::io::Write;
+    let _guard = a
+        .busy
+        .try_lock()
+        .map_err(|_| anyhow!("Wait for the current task to finish"))?;
+    let title = safe(&note.title);
+    let ct = safe(&note.class_type);
+    let course = safe(&note.course);
+    if title.is_empty() || ct.is_empty() || course.is_empty() || note.body.trim().is_empty() {
+        return Err(anyhow!("Title, subject, course and Markdown content are required").into());
+    }
+    let vault = a.vault().await;
+    let relative = format!("{ct}/{course}/Mind Map Notes/{title}.md");
+    let path = vault.join(&relative);
+    std::fs::create_dir_all(path.parent().unwrap())?;
+    // Exclusive creation protects both imported and manually authored notes.
+    let mut file = std::fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)
+        .map_err(|e| {
+            anyhow!("Cannot create this note (choose another title if it already exists): {e}")
+        })?;
+    let content = format!(
+        "---\ntitle: {}\nclass_type: {}\ncourse: {}\n---\n\n{}",
+        json!(title),
+        json!(ct),
+        json!(course),
+        note.body
+    );
+    let saved = (|| -> AResult<i64> {
+        file.write_all(content.as_bytes())?;
+        let absolute = std::fs::canonicalize(&path)?;
+        let mut db = a.db.lock().unwrap();
+        let tx = db.transaction()?;
+        tx.execute("INSERT INTO sessions(created,class_type,course,unit,lesson,title,note_path,status) VALUES(?1,?2,?3,'',?4,?4,?5,'done')",
+            params![ts() as i64, ct, course, title, relative])?;
+        let id = tx.last_insert_rowid();
+        tx.execute(
+            "INSERT INTO note_locations(session_id,path) VALUES(?1,?2)",
+            params![id, absolute.to_string_lossy()],
+        )?;
+        tx.commit()?;
+        Ok(id)
+    })();
+    let id = match saved {
+        Ok(id) => id,
+        Err(error) => {
+            drop(file);
+            let _ = std::fs::remove_file(&path);
+            return Err(error.into());
+        }
+    };
+    if let Err(error) = rebuild_topic_indexes(&vault) {
+        eprintln!("Could not refresh topic indexes: {error}");
+    }
+    Ok(Json(json!({"id":id,"title":title,"note_path":relative})))
+}
+
 async fn sessions(State(a): State<Arc<App>>) -> R<Json<Value>> {
     let db = a.db.lock().unwrap();
     let mut st = db.prepare("SELECT id,created,class_type,course,unit,lesson,title,status,error FROM sessions ORDER BY id DESC")?;

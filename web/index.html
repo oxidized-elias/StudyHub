@@ -57,7 +57,7 @@ const pre={whiteSpace:'pre-wrap',fontSize:12,m:0,p:1,borderRadius:1,bgcolor:'rgb
 const mdSx={'& > :first-child':{mt:0},'& > :last-child':{mb:0},lineHeight:1.65,'& a':{color:'primary.main'},'& pre':{bgcolor:'rgba(0,0,0,.25)',p:1.5,borderRadius:2,overflow:'auto'},'& code':{fontSize:'.9em'},
  '& blockquote':{borderLeft:'3px solid',borderColor:'primary.main',m:0,pl:2},'& details':{border:'1px solid',borderColor:'divider',borderRadius:2,px:1.5,py:.5,my:1},
  '& summary':{cursor:'pointer',fontWeight:600},'& table':{borderCollapse:'collapse',display:'block',overflowX:'auto',maxWidth:'100%'},'& td,& th':{border:'1px solid',borderColor:'divider',px:1,py:.5},
- '& .source-highlight':{backgroundColor:'rgba(255,213,79,.16)',boxShadow:'-4px 0 #e9bd50',pl:1.5,pr:1,borderRadius:'4px',scrollMarginTop:32},'& .katex-display':{overflowX:'auto',overflowY:'hidden',py:1},'& .mermaid svg':{maxWidth:'100%',height:'auto'},'& .diagram-error':{border:'1px solid',borderColor:'warning.main',p:1,borderRadius:1},'& .mermaid':{overflowX:'auto',bgcolor:'rgba(0,0,0,.2)',borderRadius:2,p:1,textAlign:'center',my:1}};
+ '& .source-highlight':{backgroundColor:'rgba(255,213,79,.16)',boxShadow:'-4px 0 #e9bd50',pl:1.5,pr:1,borderRadius:'4px',scrollMarginTop:32},'& .katex-display':{overflowX:'auto',overflowY:'hidden',py:1},'& img':{maxWidth:'100%',height:'auto'},'& .mermaid svg':{maxWidth:'100%',height:'auto'},'& .diagram-error':{border:'1px solid',borderColor:'warning.main',p:1,borderRadius:1},'& .mermaid':{overflowX:'auto',bgcolor:'rgba(0,0,0,.2)',borderRadius:2,p:1,textAlign:'center',my:1}};
 
 const submitOnEnter=(event,submit,enabled=true)=>{if(event.key!=='Enter'||event.shiftKey||event.repeat||event.isComposing||event.nativeEvent?.isComposing||event.keyCode===229)return;event.preventDefault();if(enabled)submit();};
 function NumberField({value,onChange,min=0,max=100000,step=1,inputProps={},InputProps={},sx,...props}){
@@ -66,6 +66,36 @@ function NumberField({value,onChange,min=0,max=100000,step=1,inputProps={},Input
 }
 mermaid.initialize({startOnLoad:false,theme:'dark',securityLevel:'strict',flowchart:{htmlLabels:false},suppressErrorRendering:true});
 const escapeHtml=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// Coordinate plots use data only: no model-generated JavaScript or SVG is executed.
+function coordinateGraph(source){
+ if(source.length>100000)throw new Error('Graph source is too large');
+ const g=JSON.parse(source),finite=n=>typeof n==='number'&&Number.isFinite(n)&&Math.abs(n)<=1e9;
+ const range=r=>Array.isArray(r)&&r.length===2&&r.every(finite)&&r[1]>r[0]&&r[1]-r[0]>=1e-6;
+ if(!g||!range(g.x)||!range(g.y)||!Array.isArray(g.series)||!g.series.length||g.series.length>16)throw new Error('Use x/y ranges and 1–16 series');
+ const esc=s=>escapeHtml(String(s??'').slice(0,200));
+ const X=x=>60+(x-g.x[0])/(g.x[1]-g.x[0])*480,Y=y=>540-(y-g.y[0])/(g.y[1]-g.y[0])*480;
+ const inside=p=>p[0]>=g.x[0]&&p[0]<=g.x[1]&&p[1]>=g.y[0]&&p[1]<=g.y[1];
+ let svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" role="img" aria-label="${esc(g.title||'Coordinate graph')}" style="width:100%;max-width:600px;background:#161b22;color:#e6edf3"><title>${esc(g.title||'Coordinate graph')}</title>`;
+ svg+='<rect x="60" y="60" width="480" height="480" fill="none" stroke="#8b949e"/>';
+ for(let i=0;i<=10;i++){
+  const x=g.x[0]+(g.x[1]-g.x[0])*i/10,y=g.y[0]+(g.y[1]-g.y[0])*i/10;
+  svg+=`<path d="M ${X(x)} 60 V 540 M 60 ${Y(y)} H 540" stroke="#30363d" fill="none"/><text x="${X(x)}" y="558" text-anchor="middle" fill="currentColor" font-size="11">${Number(x.toPrecision(4))}</text><text x="54" y="${Y(y)+4}" text-anchor="end" fill="currentColor" font-size="11">${Number(y.toPrecision(4))}</text>`;
+ }
+ if(g.x[0]<=0&&g.x[1]>=0)svg+=`<path d="M ${X(0)} 60 V 540" stroke="#e6edf3"/>`;
+ if(g.y[0]<=0&&g.y[1]>=0)svg+=`<path d="M 60 ${Y(0)} H 540" stroke="#e6edf3"/>`;
+ svg+=`<text x="300" y="24" text-anchor="middle" fill="currentColor">${esc(g.title)}</text><text x="300" y="585" text-anchor="middle" fill="currentColor">${esc(g.xLabel||'x')}</text><text x="15" y="35" fill="currentColor">${esc(g.yLabel||'y')}</text>`;
+ const colors=['#79c0ff','#ffa657','#d2a8ff','#7ee787'];
+ g.series.forEach((s,i)=>{
+  if(!s||!['line','points'].includes(s.type)||!Array.isArray(s.points)||!s.points.length||s.points.length>2000)throw new Error('Each series needs type line/points and 1–2000 points');
+  s.points.forEach(p=>{if(!Array.isArray(p)||p.length<2||p.length>3||!finite(p[0])||!finite(p[1])||!inside(p))throw new Error('Points must be finite [x,y,label?] coordinates inside the ranges')});
+  const color=colors[i%colors.length];
+  svg+=`<g><title>${esc(s.label||'Series '+(i+1))}</title>`;
+  if(s.type==='line')svg+=`<polyline points="${s.points.map(p=>`${X(p[0])},${Y(p[1])}`).join(' ')}" fill="none" stroke="${color}" stroke-width="2"/>`;
+  s.points.forEach(p=>{if(s.type==='points'||p[2]!=null)svg+=`<circle cx="${X(p[0])}" cy="${Y(p[1])}" r="4" fill="${color}"/>`;if(p[2]!=null)svg+=`<text x="${X(p[0])+6}" y="${Y(p[1])-7}" fill="${color}" font-size="12">${esc(p[2])}</text>`});
+  svg+='</g>';
+ });
+ return svg+'</svg>';
+}
 const normalizeMath=text=>String(text).replace(/\x08dots/g,'\\dots').replace(/\x08(egin|eta|ar|inom|oldsymbol)\b/g,'\\b$1').replace(/\x0c(rac|orall)\b/g,'\\f$1').replace(/\t(ext|imes|heta|o)\b/g,'\\t$1').replace(/\r(ight(?:arrow)?|angle|ho)\b/g,'\\r$1').replace(/\n(abla|u|eq|otin)\b/g,'\\n$1');
 const repairMathControls=source=>String(source).split(/(`{3,}[^]*?`{3,}|~{3,}[^]*?~{3,}|`[^`\n]*`)/g).map((part,index)=>index%2?part:part.replace(/(\$\$?)([^]*?)\1/g,(_,delimiter,math)=>delimiter+normalizeMath(math)+delimiter)).join('');
 // Normalize only unambiguous plain math; preserve explicit math and literal code.
@@ -338,6 +368,14 @@ function Md({md,sid=0,nolink=false,onNote,highlightHeading='',highlightAll=false
   if(target&&typeof target.scrollIntoView==='function')target.scrollIntoView({block:'center',behavior:'smooth'});
 
   el.querySelectorAll('pre > code').forEach(code=>{
+   if(code.className.toLowerCase().split(/\s+/).includes('language-graph')){
+    try{
+     const plot=document.createElement('div');plot.className='coordinate-graph';
+     plot.innerHTML=DOMPurify.sanitize(coordinateGraph(code.textContent),{USE_PROFILES:{svg:true}});
+     code.parentElement.replaceWith(plot);
+    }catch(error){const warning=document.createElement('div');warning.className='diagram-error';warning.textContent='Graph could not render: '+error.message;code.parentElement.before(warning)}
+    return;
+   }
    if(!code.className.toLowerCase().split(/\s+/).includes('language-mermaid'))return;
    const source=code.textContent.trim(),node=document.createElement('div');node.className='mermaid';node.textContent='Rendering diagram…';
    code.parentElement.replaceWith(node);const id=`note-diagram-${++diagramId}`;
@@ -420,7 +458,26 @@ function Viewer({d,sessions,setSel,toLog,onDelete,focusHeading='',focusAll=false
  </Box>;
 }
 
-function Notes({sessions,sel,setSel,toLog,onDelete,onDeleteFolder,focusHeading='',focusAll=false}){
+function NewNote({onClose,onSaved}){
+ const [draft,setDraft]=useState({title:'',class_type:'',course:'',body:''}),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ const field=key=>e=>setDraft(old=>({...old,[key]:e.target.value}));
+ const save=async()=>{setBusy(true);setError('');try{const result=await api('/api/notes',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(draft)});onSaved(result.id)}catch(e){setError(e.message)}finally{setBusy(false)}};
+ return <Dialog open onClose={busy?undefined:onClose} fullWidth maxWidth="lg"><DialogTitle>New note</DialogTitle><DialogContent dividers>
+  <Stack spacing={2}>
+   {error&&<Notice severity="error">{error}</Notice>}
+   <TextField autoFocus required label="Title" value={draft.title} onChange={field('title')} disabled={busy}/>
+   <Stack direction={{xs:'column',sm:'row'}} spacing={2}><TextField fullWidth required label="Subject" value={draft.class_type} onChange={field('class_type')} disabled={busy}/><TextField fullWidth required label="Course" value={draft.course} onChange={field('course')} disabled={busy}/></Stack>
+   <Typography variant="body2" color="text.secondary">Write Markdown with headings, lists, tables, links, images, task lists and math. Add diagrams inside a fenced code block starting with ```mermaid.</Typography>
+   <Stack direction={{xs:'column',md:'row'}} spacing={2}>
+    <Box sx={{flex:1,minWidth:0}}><Typography variant="subtitle2">Markdown</Typography><Box component="textarea" aria-label="New note Markdown" value={draft.body} onChange={field('body')} disabled={busy} spellCheck={false} sx={{width:'100%',minHeight:360,boxSizing:'border-box',bgcolor:'background.default',color:'text.primary',p:2,border:1,borderColor:'divider',borderRadius:1,fontFamily:'monospace',resize:'vertical'}}/></Box>
+    <Box sx={{flex:1,minWidth:0,maxHeight:600,overflow:'auto'}}><Typography variant="subtitle2">Live preview</Typography><Md md={draft.body}/></Box>
+   </Stack>
+  </Stack>
+ </DialogContent><DialogActions><Button disabled={busy} onClick={onClose}>Cancel</Button><Button variant="contained" disabled={busy||!Object.values(draft).every(value=>value.trim())} onClick={save}>{busy?'Saving…':'Create note'}</Button></DialogActions></Dialog>;
+}
+
+function Notes({sessions,refresh,sel,setSel,toLog,onDelete,onDeleteFolder,focusHeading='',focusAll=false}){
+ const [creating,setCreating]=useState(false);
  const [d,setD]=useState(null),[col,setCol]=useState(false),[studyIds,setStudyIds]=useState([]),[query,setQuery]=useState(''),[closed,setClosed]=useState({});
  useEffect(()=>{if(!sel){setD(null);return}api('/api/review/session/'+sel).then(setD).catch(()=>setD(null))},[sel,sessions]);
  const tree={};
@@ -429,6 +486,7 @@ function Notes({sessions,sel,setSel,toLog,onDelete,onDeleteFolder,focusHeading='
   <Box sx={{width:col?44:{xs:180,sm:260},flexShrink:0,overflow:'auto',borderRight:1,borderColor:'divider',pr:col?0:1,transition:'width .15s'}}>
    <Button size="small" onClick={()=>setCol(!col)} aria-label="toggle sidebar" sx={{minWidth:0,mb:1}}>{col?'\u00BB':'\u00AB Hide'}</Button>
    {!col&&<Box>
+   <Button fullWidth variant="contained" onClick={()=>setCreating(true)} sx={{mb:2}}>New note</Button>
    <TextField fullWidth label="Search Notes" value={query} onChange={e=>setQuery(e.target.value)} sx={{mb:2}}/>
    {!!studyIds.length&&<Stack spacing={1} sx={{mb:2}}><Typography variant="caption">{studyIds.length} notes selected</Typography><Button size="small" variant="outlined" href={studyLink(studyIds,'guided')} onClick={e=>handoff(e,studyIds,'guided')}>Learn selected</Button><Button size="small" variant="outlined" href={studyLink(studyIds,'quiz')} onClick={e=>handoff(e,studyIds,'quiz')}>Quiz selected</Button></Stack>}
    {!Object.keys(tree).length&&<Typography variant="body2" color="text.secondary">{query?'No matching notes.':'No notes yet.'}</Typography>}
@@ -443,8 +501,8 @@ function Notes({sessions,sel,setSel,toLog,onDelete,onDeleteFolder,focusHeading='
    </Box>}
   </Box>
   <Box sx={{flex:1,overflow:'auto',minWidth:0}}>
-   {d&&d.id===sel?<Viewer key={d.id} d={d} sessions={sessions} setSel={setSel} toLog={toLog} onDelete={onDelete} focusHeading={focusHeading} focusAll={focusAll}/>:<EmptyState title="Your notes, connected" detail="Select a note to read it here, or upload your first set of pages to get started."/>}
-  </Box></Box>;
+   {d&&d.id===sel?<Viewer key={d.id} d={d} sessions={sessions} setSel={setSel} toLog={toLog} onDelete={onDelete} focusHeading={focusHeading} focusAll={focusAll}/>:<EmptyState title="Your notes, connected" detail="Select a note to read it here, or create a new note or upload pages to get started."/>}
+  </Box>{creating&&<NewNote onClose={()=>setCreating(false)} onSaved={id=>{setCreating(false);setSel(id);refresh()}}/>}</Box>;
 }
 
 function NoteText({note,focusHeading}){const lines=String(note).split('\n');let active=false,level=0;const target=String(focusHeading||'').trim().toLowerCase();return <Box component="pre" sx={{...pre,whiteSpace:'pre-wrap'}}>{lines.map((line,i)=>{const m=/^(#{1,6})\s+(.+)$/.exec(line);if(m){if(target&&m[2].trim().toLowerCase()===target){active=true;level=m[1].length}else if(active&&m[1].length<=level)active=false}return <Box component="span" key={i} sx={active?{display:'inline',backgroundColor:'rgba(255,213,79,.24)',color:'warning.light',borderRadius:0,boxShadow:'0 0 0 2px rgba(255,213,79,.24)'}:{}}>{line+'\n'}</Box>})}</Box>}
@@ -577,7 +635,7 @@ function Right({sessions,refresh,onHide}){
    </Tabs>
    <Tooltip title="Collapse workspace"><Button size="small" onClick={onHide} aria-label="Collapse workspace" sx={{minWidth:36}}>»</Button></Tooltip></Stack>
   <Box sx={{flex:1,minHeight:0,overflow:(mode==='notes'||mode==='log')?'hidden':'auto'}}>
-   {mode==='notes'?<Notes sessions={sessions} sel={sel} setSel={setSel} toLog={()=>setMode('log')} onDelete={setDel} onDeleteFolder={folder=>setDel({folder})} focusHeading={sel===focusId?focusHeading:''} focusAll={sel===focusId&&!focusHeading}/>
+   {mode==='notes'?<Notes sessions={sessions} refresh={refresh} sel={sel} setSel={setSel} toLog={()=>setMode('log')} onDelete={setDel} onDeleteFolder={folder=>setDel({folder})} focusHeading={sel===focusId?focusHeading:''} focusAll={sel===focusId&&!focusHeading}/>
     :mode==='lessons'?<Lessons sessions={sessions}/>
     :mode==='ideas'?<BigIdeas sessions={sessions} onOpen={n=>{const r=sessions.find(x=>x.title===n);if(r){setSel(r.id);setMode('notes')}}}/>
     :<Review sessions={sessions} refresh={refresh} sel={sel} setSel={setSel} onDelete={setDel} focusHeading={focusHeading}/>}</Box>

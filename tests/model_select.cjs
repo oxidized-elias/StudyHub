@@ -27,6 +27,8 @@ async function discovery(){
 async function savedProfileSettings(){
  const profiles=[{id:1,label:'First',kind:'ollama',base_url:'http://remote:11434',model:'old',context:8192,api_key_set:true},{id:2,label:'Saved Gemma',kind:'ollama',base_url:'http://remote:11434',model:'gemma4:e4b',context:16384}];
  const settings={unified:true,active_provider:'2'};
+ assert.equal(harness().e.initialModelProfile([],{ollama_url:'http://host.docker.internal:11434'}).base_url,'http://host.docker.internal:11434');
+ assert.equal(harness().e.initialModelProfile(profiles,{active_provider:'2',ollama_url:'http://host.docker.internal:11434'}).base_url,profiles[1].base_url);
  const h=harness();
  let reloaded=0;
  const props={profiles,settings,reload:async()=>{reloaded++},onTutorial(){}};

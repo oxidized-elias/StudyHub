@@ -63,3 +63,23 @@ In **Notes**, click **Delete** beside a subject or course folder. Confirm to per
 Open a note and expand **View Source · Transcription or Original Upload**. Switch between **AI Transcription** and **Actual Upload**, and choose an uploaded file if there are several. Source material is kept separately from generated Markdown. On startup, StudyHub removes its legacy Session input transcript callout from existing tracked note files; saved transcriptions and original uploads are retained.
 
 Big Ideas navigation links remain part of the vault, while internal maintenance markers are hidden in rendered notes. The note author receives a subject-specific idea catalog; with **Read Notes** enabled (the default), it can also request the subject’s `Big Ideas - Master List.md` index and the individual idea files listed in that catalog. These files help connect ideas; they do not replace the uploaded source as evidence for new note content.
+
+## Coordinate-plane graphs
+
+Image/PDF transcription can preserve readable graph coordinates in a `graph` Markdown
+fence. Notes and learning previews render these as numeric coordinate plots. You can
+edit the JSON in the review editor:
+
+````markdown
+```graph
+{"title":"Measured points","x":[-5,5],"y":[-5,5],"xLabel":"x","yLabel":"y","series":[{"type":"line","label":"Segment","points":[[-2,-1],[0,0,"origin"],[2,1]]},{"type":"points","points":[[1,3,"A"]]}]}
+```
+````
+
+Use `line` for straight connections between samples and `points` for scatter plots.
+Represent discontinuities with separate series. The renderer does not evaluate
+formulas or infer curves between samples. Coordinates must be finite numbers inside
+the axis ranges. Invalid blocks retain their editable source and show an error.
+The model should flag unreadable scales or points instead of guessing; compare its
+output with the upload before approving. This is a StudyHub Markdown extension;
+other Markdown/Obsidian viewers retain the JSON code block unless they support it.

@@ -170,6 +170,7 @@ mod tests {
                 .as_nanos()
         ));
         std::env::set_var("DATA_DIR", &temp);
+        std::env::set_var("STUDYHUB_OLLAMA_URL", "http://host.docker.internal:11434");
         std::env::set_var("VAULT_DIR", temp.join("vault"));
         std::env::set_var("LEARNING_DATA_DIR", temp.join("learning"));
         std::env::set_var("NOTES_INTEGRATION_TOKEN", "test-internal-token");
@@ -206,6 +207,9 @@ mod tests {
             config["vault_path"],
             temp.join("vault").to_string_lossy().as_ref()
         );
+        assert_eq!(config["ollama_url"], "http://host.docker.internal:11434");
+        let defaults = json_request(app.clone(), "GET", "/learn/api/settings", json!({})).await;
+        assert_eq!(defaults["ollama_url"], "http://host.docker.internal:11434");
         let saved = json_request(
             app.clone(),
             "PUT",

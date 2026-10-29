@@ -1,0 +1,9 @@
+# Linux: share host networking so Ollama can stay bound to 127.0.0.1.
+# docker compose -f compose.yaml -f compose.host.yaml up -d --build
+services:
+  studyhub:
+    network_mode: host
+    ports: !reset []
+    environment:
+      STUDYHUB_BIND: 127.0.0.1:8082
+      STUDYHUB_OLLAMA_URL: ${STUDYHUB_OLLAMA_URL:-http://127.0.0.1:11434}

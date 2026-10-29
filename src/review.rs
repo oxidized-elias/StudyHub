@@ -563,6 +563,52 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn manual_note_preserves_markdown_and_rejects_overwrites_and_empty_content() {
+        let f = Fixture::new();
+        let body = "# My notes\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n```mermaid\nsequenceDiagram\nAlice->>Bob: Hello\n```\n\n$x^2$\n";
+        let draft = || NewNote {
+            title: "My notes".into(),
+            class_type: "Math".into(),
+            course: "Algebra".into(),
+            body: body.into(),
+        };
+        let Json(created) = create_note(State(f.app.clone()), Json(draft()))
+            .await
+            .ok()
+            .unwrap();
+        let id = created["id"].as_i64().unwrap();
+        let Json(saved) = session(State(f.app.clone()), AxPath(id))
+            .await
+            .ok()
+            .unwrap();
+        assert!(saved["note"].as_str().unwrap().contains(body.trim_end()));
+        assert_eq!(saved["status"], "done");
+        assert_eq!(saved["unit"], "");
+        assert!(create_note(State(f.app.clone()), Json(draft()))
+            .await
+            .is_err());
+        let mut empty = draft();
+        empty.title = "Empty".into();
+        empty.body = "  ".into();
+        assert!(create_note(State(f.app.clone()), Json(empty))
+            .await
+            .is_err());
+        let count: i64 = f
+            .app
+            .db
+            .lock()
+            .unwrap()
+            .query_row("SELECT count(*) FROM sessions", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 1);
+        let Json(saved) = session(State(f.app.clone()), AxPath(id))
+            .await
+            .ok()
+            .unwrap();
+        assert!(saved["note"].as_str().unwrap().contains(body.trim_end()));
+    }
+
+    #[tokio::test]
     async fn legacy_transcript_is_removed_from_file_but_sources_stay_available() {
         let f = Fixture::new();
         let (sid, _) = f.pending();

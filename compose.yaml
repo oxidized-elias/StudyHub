@@ -17,6 +17,7 @@ services:
       DATA_DIR: /app/data
       LEARNING_DATA_DIR: /app/data/learning
       VAULT_DIR: /vault
+      STUDYHUB_OLLAMA_URL: ${STUDYHUB_OLLAMA_URL:-http://host.docker.internal:11434}
       STUDYHUB_URL: ${STUDYHUB_URL:-http://localhost:${STUDYHUB_PORT:-8082}}
     volumes:
       - studyhub_data:/app/data

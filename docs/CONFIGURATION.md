@@ -8,6 +8,7 @@
 | --- | --- | --- |
 | `STUDYHUB_BIND` | `127.0.0.1:8082` | The single HTTP listener. |
 | `HUB_BIND` | unset | Compatibility fallback if `STUDYHUB_BIND` is unset. |
+| `STUDYHUB_OLLAMA_URL` | `http://127.0.0.1:11434` (manual); `http://host.docker.internal:11434` (Docker bridge) | Default endpoint for new Ollama profiles and initial notes settings. Saved URLs take precedence. Linux host-network Compose defaults to host localhost. |
 | `STUDYHUB_URL` | `http://127.0.0.1:8082` | Public origin for application links. Set when changing ports or using HTTPS. |
 | `DATA_DIR` | `<repository>/data` | Notes settings, sessions, uploads and correction lessons. |
 | `LEARNING_DATA_DIR` | `<DATA_DIR>/learning` | Notebook/history database and learning source originals. |

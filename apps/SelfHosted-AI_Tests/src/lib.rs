@@ -263,7 +263,7 @@ fn router(a: Arc<App>) -> Router {
 }
 async fn settings_get(State(a): State<Arc<App>>) -> Json<Value> {
     Json(
-        json!({"unified":true,"notes_url":"/notes/","notes_token_set":false,"active_provider":setting(&a,"active_provider","0")}),
+        json!({"ollama_url":std::env::var("STUDYHUB_OLLAMA_URL").ok().filter(|url| !url.trim().is_empty()).unwrap_or_else(|| "http://127.0.0.1:11434".into()),"unified":true,"notes_url":"/notes/","notes_token_set":false,"active_provider":setting(&a,"active_provider","0")}),
     )
 }
 async fn settings_put(State(a): State<Arc<App>>, Json(v): Json<Value>) -> R<Json<Value>> {

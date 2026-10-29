@@ -31,6 +31,7 @@ Source: [src/lib.rs](../src/lib.rs). Handlers in child modules are referenced by
 | GET | `/notes/api/models` | `get(models)` |
 | GET | `/notes/api/lookup` | `get(lookup)` |
 | POST | `/notes/api/submit` | `post(submit)` |
+| POST | `/notes/api/notes` | `post(create_note)` |
 | GET | `/notes/api/review/sessions` | `get(sessions)` |
 | GET, PUT | `/notes/api/review/session/:id/style` | `get(note_preferences::read).put(note_preferences::write)` |
 | DELETE | `/notes/api/review/session/:id/logs` | `axum::routing::delete(clear_logs)` |

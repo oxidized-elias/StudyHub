@@ -5,8 +5,7 @@
 <p align="center">
   Self-hosted Notes, Notebooks and AI Studying<br>
   Inspired by Gemini's learning tools and NotebookLM, with your own notes and choice of AI model<br>
-  Import your notes, connect big ideas, and turn them into guided lessons and practice<br>
-  Yes, this is vibecoded.
+  Import your notes, connect big ideas, and turn them into guided lessons and practice
 </p>
 
 <br>
@@ -135,7 +134,7 @@ See [configuration and operations](docs/CONFIGURATION.md) for environment settin
 
 ## Can I Use a Local Model?
 
-Yes. Configure an Ollama server on this computer or any reachable host. In Docker, `localhost` refers to the container; use a remote server address or `http://host.docker.internal:11434` for Ollama on the Docker host. The model server must accept connections from the container. StudyHub does not bundle or download model weights.
+Yes. Configure an Ollama server on this computer or any reachable host. On Linux, use `docker compose -f compose.yaml -f compose.host.yaml up -d --build` to reach a host Ollama instance bound to localhost, then select `http://127.0.0.1:11434` in both model and note-import settings. In the default Docker bridge mode, `localhost` refers to the container; use a remote server address or `http://host.docker.internal:11434` for Ollama on the Docker host. The model server must accept connections from the container. StudyHub does not bundle or download model weights.
 
 Cloud profiles support OpenAI, Claude, Gemini and OpenAI-compatible endpoints. Notes imports have their own provider and model selections.
 

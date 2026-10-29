@@ -31,7 +31,8 @@ ENV NODE_ENV=production \
     STUDYHUB_BIND=0.0.0.0:8082 \
     DATA_DIR=/app/data \
     LEARNING_DATA_DIR=/app/data/learning \
-    VAULT_DIR=/vault
+    VAULT_DIR=/vault \
+    STUDYHUB_OLLAMA_URL=http://host.docker.internal:11434
 USER node
 EXPOSE 8082
 VOLUME ["/app/data", "/vault"]

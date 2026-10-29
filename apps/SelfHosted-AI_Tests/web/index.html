@@ -25,6 +25,36 @@ const pre={whiteSpace:'pre-wrap',wordBreak:'break-word',font:'13px/1.6 ui-monosp
 const mdSx={'& > :first-child':{mt:0},'& > :last-child':{mb:0},lineHeight:1.8,'& p':{my:1.5},'& a':{color:'primary.main'},'& pre':{...pre,overflowX:'auto'},'& blockquote':{borderLeft:'3px solid #a8c7fa',pl:2,ml:0},'& table':{borderCollapse:'collapse',display:'block',overflowX:'auto'},'& td,& th':{border:'1px solid #45464b',p:1},'& .katex-display':{overflowX:'auto',py:1},'& .mermaid svg':{maxWidth:'100%',height:'auto'},'& .mermaid':{overflowX:'auto',py:2},'& details':{p:1.5,my:1,border:'1px solid #34363a',borderRadius:2},'& summary':{cursor:'pointer'}};
 mermaid.initialize({startOnLoad:false,theme:'dark',securityLevel:'strict',flowchart:{htmlLabels:false},suppressErrorRendering:true});
 const escapeHtml=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// Coordinate plots use data only: no model-generated JavaScript or SVG is executed.
+function coordinateGraph(source){
+ if(source.length>100000)throw new Error('Graph source is too large');
+ const g=JSON.parse(source),finite=n=>typeof n==='number'&&Number.isFinite(n)&&Math.abs(n)<=1e9;
+ const range=r=>Array.isArray(r)&&r.length===2&&r.every(finite)&&r[1]>r[0]&&r[1]-r[0]>=1e-6;
+ if(!g||!range(g.x)||!range(g.y)||!Array.isArray(g.series)||!g.series.length||g.series.length>16)throw new Error('Use x/y ranges and 1–16 series');
+ const esc=s=>escapeHtml(String(s??'').slice(0,200));
+ const X=x=>60+(x-g.x[0])/(g.x[1]-g.x[0])*480,Y=y=>540-(y-g.y[0])/(g.y[1]-g.y[0])*480;
+ const inside=p=>p[0]>=g.x[0]&&p[0]<=g.x[1]&&p[1]>=g.y[0]&&p[1]<=g.y[1];
+ let svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" role="img" aria-label="${esc(g.title||'Coordinate graph')}" style="width:100%;max-width:600px;background:#161b22;color:#e6edf3"><title>${esc(g.title||'Coordinate graph')}</title>`;
+ svg+='<rect x="60" y="60" width="480" height="480" fill="none" stroke="#8b949e"/>';
+ for(let i=0;i<=10;i++){
+  const x=g.x[0]+(g.x[1]-g.x[0])*i/10,y=g.y[0]+(g.y[1]-g.y[0])*i/10;
+  svg+=`<path d="M ${X(x)} 60 V 540 M 60 ${Y(y)} H 540" stroke="#30363d" fill="none"/><text x="${X(x)}" y="558" text-anchor="middle" fill="currentColor" font-size="11">${Number(x.toPrecision(4))}</text><text x="54" y="${Y(y)+4}" text-anchor="end" fill="currentColor" font-size="11">${Number(y.toPrecision(4))}</text>`;
+ }
+ if(g.x[0]<=0&&g.x[1]>=0)svg+=`<path d="M ${X(0)} 60 V 540" stroke="#e6edf3"/>`;
+ if(g.y[0]<=0&&g.y[1]>=0)svg+=`<path d="M 60 ${Y(0)} H 540" stroke="#e6edf3"/>`;
+ svg+=`<text x="300" y="24" text-anchor="middle" fill="currentColor">${esc(g.title)}</text><text x="300" y="585" text-anchor="middle" fill="currentColor">${esc(g.xLabel||'x')}</text><text x="15" y="35" fill="currentColor">${esc(g.yLabel||'y')}</text>`;
+ const colors=['#79c0ff','#ffa657','#d2a8ff','#7ee787'];
+ g.series.forEach((s,i)=>{
+  if(!s||!['line','points'].includes(s.type)||!Array.isArray(s.points)||!s.points.length||s.points.length>2000)throw new Error('Each series needs type line/points and 1–2000 points');
+  s.points.forEach(p=>{if(!Array.isArray(p)||p.length<2||p.length>3||!finite(p[0])||!finite(p[1])||!inside(p))throw new Error('Points must be finite [x,y,label?] coordinates inside the ranges')});
+  const color=colors[i%colors.length];
+  svg+=`<g><title>${esc(s.label||'Series '+(i+1))}</title>`;
+  if(s.type==='line')svg+=`<polyline points="${s.points.map(p=>`${X(p[0])},${Y(p[1])}`).join(' ')}" fill="none" stroke="${color}" stroke-width="2"/>`;
+  s.points.forEach(p=>{if(s.type==='points'||p[2]!=null)svg+=`<circle cx="${X(p[0])}" cy="${Y(p[1])}" r="4" fill="${color}"/>`;if(p[2]!=null)svg+=`<text x="${X(p[0])+6}" y="${Y(p[1])-7}" fill="${color}" font-size="12">${esc(p[2])}</text>`});
+  svg+='</g>';
+ });
+ return svg+'</svg>';
+}
 const normalizeMath=text=>String(text).replace(/\x08dots/g,'\\dots').replace(/\x08(egin|eta|ar|inom|oldsymbol)\b/g,'\\b$1').replace(/\x0c(rac|orall)\b/g,'\\f$1').replace(/\t(ext|imes|heta|o)\b/g,'\\t$1').replace(/\r(ight(?:arrow)?|angle|ho)\b/g,'\\r$1').replace(/\n(abla|u|eq|otin)\b/g,'\\n$1');
 const repairMathControls=source=>String(source).split(/(`{3,}[^]*?`{3,}|~{3,}[^]*?~{3,}|`[^`\n]*`)/g).map((part,index)=>index%2?part:part.replace(/(\$\$?)([^]*?)\1/g,(_,delimiter,math)=>delimiter+normalizeMath(math)+delimiter)).join('');
 // Normalize only unambiguous plain math; preserve explicit math and literal code.
@@ -83,6 +113,14 @@ function Md({md,sid=0,nolink=false,onNote,onSource}){
   const el=ref.current;if(!el)return;let cancelled=false;
   el.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(h=>{h.id=h.textContent});
   el.querySelectorAll('pre > code').forEach(code=>{
+   if(code.className.toLowerCase().split(/\s+/).includes('language-graph')){
+    try{
+     const plot=document.createElement('div');plot.className='coordinate-graph';
+     plot.innerHTML=DOMPurify.sanitize(coordinateGraph(code.textContent),{USE_PROFILES:{svg:true}});
+     code.parentElement.replaceWith(plot);
+    }catch(error){const warning=document.createElement('div');warning.className='diagram-error';warning.textContent='Graph could not render: '+error.message;code.parentElement.before(warning)}
+    return;
+   }
    if(!code.className.toLowerCase().split(/\s+/).includes('language-mermaid'))return;
    const source=code.textContent.trim(),node=document.createElement('div');node.className='mermaid';node.textContent='Rendering diagram…';
    code.parentElement.replaceWith(node);const id=`note-diagram-${++diagramId}`;
@@ -212,7 +250,7 @@ function ModelSelect({profile,profiles,onChange,disabled=false,label="Model"}){
 }
 const initialModelProfile=(profiles,settings)=>{
  const saved=profiles.find(p=>p.id===Number(settings.active_provider))||profiles[0];
- return saved?{...saved,api_key:''}:{id:0,label:'My local model',kind:'ollama',base_url:'http://127.0.0.1:11434',model:'',api_key:'',context:16384};
+ return saved?{...saved,api_key:''}:{id:0,label:'My local model',kind:'ollama',base_url:settings.ollama_url||'http://127.0.0.1:11434',model:'',api_key:'',context:16384};
 };
 const selectedProfileId=(profiles,settings,current)=>profiles.find(p=>p.id===Number(settings.active_provider))?.id||profiles.find(p=>p.id===Number(current))?.id||profiles[0]?.id||null;
 function ProviderSettings({profiles,settings,reload,onTutorial}){
@@ -222,7 +260,7 @@ function ProviderSettings({profiles,settings,reload,onTutorial}){
  const editingProfile=useRef(false),[saved,setSaved]=useState('');
  useEffect(()=>{if(!editingProfile.current)setProfile(initialModelProfile(profiles,settings))},[profiles,settings.active_provider]);
  const editProfile=change=>{editingProfile.current=true;setSaved('');setProfile(change)};
- const defaults={ollama:'http://127.0.0.1:11434',openai:'https://api.openai.com/v1',claude:'https://api.anthropic.com/v1',gemini:'https://generativelanguage.googleapis.com/v1beta',compatible:'http://127.0.0.1:8000/v1'};
+ const defaults={ollama:settings.ollama_url||'http://127.0.0.1:11434',openai:'https://api.openai.com/v1',claude:'https://api.anthropic.com/v1',gemini:'https://generativelanguage.googleapis.com/v1beta',compatible:'http://127.0.0.1:8000/v1'};
  const set=k=>e=>editProfile(p=>({...p,[k]:e.target.value}));
  return <Stack spacing={3} sx={{maxWidth:800,mx:'auto','& > .MuiPaper-root':{borderRadius:'12px'},'& .MuiButton-root':{borderRadius:'8px'}}}><Button variant="outlined" sx={{alignSelf:'flex-start'}} onClick={onTutorial}>Interactive Tutorial · Start or Replay</Button><Box><Typography variant="h4">Your AI, your choice</Typography><Typography color="text.secondary">Connect a cloud provider or an Ollama server on any reachable host.</Typography></Box><Failure task={task}/>
  <Paper variant="outlined" sx={{p:3}}><Stack spacing={2}><Typography variant="h6" data-tour="models">Model Profiles</Typography><Stack direction="row" flexWrap="wrap" useFlexGap spacing={1}>{profiles.map(p=><Chip disabled={task.busy} key={p.id} label={p.label} color={profile.id===p.id?'primary':'default'} variant={Number(settings.active_provider)===p.id?'filled':'outlined'} onClick={()=>editProfile({...p,api_key:''})}/>)}<Chip disabled={task.busy} label="+ New Profile" onClick={()=>editProfile({id:0,label:'',kind:'ollama',base_url:defaults.ollama,model:'',api_key:'',context:16384})}/></Stack>

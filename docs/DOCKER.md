@@ -53,6 +53,28 @@ In StudyHub's Settings select **`/vault`**. The folder browser runs inside the c
 
 ## Connect models
 
+Docker images default new Ollama profiles and note-import settings to `http://host.docker.internal:11434`. Compose supplies the host-gateway mapping. Existing saved profiles and importer URLs are preserved: update both in **AI Models & Settings** if they still use container `localhost`. Override the default with `STUDYHUB_OLLAMA_URL`.
+
+### Linux: Ollama listening on localhost
+
+To reach a host Ollama server bound to `127.0.0.1` without changing its bind address, use the host-network override:
+
+```bash
+docker compose -f compose.yaml -f compose.host.yaml up -d --build
+```
+
+Set both the tutoring profile and **Note Import Models** server URL to **`http://127.0.0.1:11434`**. Host mode supplies that default for new settings. It uses the host network directly and binds StudyHub to `127.0.0.1:8082`, so port publishing and `STUDYHUB_PORT` do not apply. This option is intended for Linux Docker Engine.
+
+Check connectivity from the running container without loading a model:
+
+```bash
+docker compose -f compose.yaml -f compose.host.yaml exec studyhub node -e 'fetch("http://127.0.0.1:11434/api/tags",{signal:AbortSignal.timeout(5000)}).then(async r=>{if(!r.ok)throw Error("HTTP "+r.status);console.log((await r.json()).models.map(m=>m.name).join("\n"))}).catch(e=>{console.error(e.message);process.exit(1)})'
+```
+
+### Bridge networking or a remote model server
+
+Ollama's default localhost binding cannot be reached through a Linux bridge gateway. For bridge mode, Ollama must listen on a host interface reachable from Docker. If using systemd, configure `OLLAMA_HOST` as described in [Ollama's server configuration](https://docs.ollama.com/faq#setting-environment-variables-on-linux), then restart Ollama. `OLLAMA_HOST=0.0.0.0:11434` listens on all host interfaces. Access security remains the instance owner's responsibility.
+
 Set provider/model URLs in the application, as with a manual install:
 
 - **Remote Ollama:** use its reachable server address, such as `http://192.168.1.50:11434`.

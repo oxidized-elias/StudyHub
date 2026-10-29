@@ -29,7 +29,7 @@ function configuration(overrides={}){
  const rendered=overrides.STUDYHUB_VAULT_PATH?process.env.STUDYHUB_COMPOSE_CUSTOM_CONFIG:process.env.STUDYHUB_COMPOSE_DEFAULT_CONFIG;
  if(rendered)return JSON.parse(readFileSync(rendered,'utf8')).services.studyhub;
  const env={...process.env};
- for(const key of ['STUDYHUB_HOST','STUDYHUB_PORT','STUDYHUB_URL','STUDYHUB_VAULT_PATH','STUDYHUB_UID','STUDYHUB_GID'])delete env[key];
+ for(const key of ['STUDYHUB_OLLAMA_URL','STUDYHUB_HOST','STUDYHUB_PORT','STUDYHUB_URL','STUDYHUB_VAULT_PATH','STUDYHUB_UID','STUDYHUB_GID'])delete env[key];
  Object.assign(env,overrides);
  const result=spawnSync('docker',['compose','--env-file','/dev/null','-f','compose.yaml','config','--format','json'],{cwd:root,env,encoding:'utf8'});
  assert.equal(result.status,0,result.stderr);
@@ -41,6 +41,9 @@ test('Compose keeps container paths stable and persists both data and the vault'
  assert.equal(config.environment.DATA_DIR,'/app/data');
  assert.equal(config.environment.LEARNING_DATA_DIR,'/app/data/learning');
  assert.equal(config.environment.VAULT_DIR,'/vault');
+ assert.equal(config.environment.STUDYHUB_OLLAMA_URL,'http://host.docker.internal:11434');
+ assert.ok(JSON.stringify(config.extra_hosts).includes('host.docker.internal'));
+ assert.ok(JSON.stringify(config.extra_hosts).includes('host-gateway'));
  assert.equal(config.ports[0].host_ip,'127.0.0.1');
  assert.equal(config.ports[0].published,'8082');
  assert.equal(config.environment.STUDYHUB_URL,'http://localhost:8082');
@@ -52,6 +55,17 @@ test('Compose supports host vaults and custom ports',{skip:!dockerAvailable&&!re
  assert.equal(config.environment.STUDYHUB_URL,'http://localhost:8182');
  assert.equal(config.ports[0].published,'8182');
  assert.ok(config.volumes.some(v=>v.type==='bind'&&v.source==='/tmp/studyhub-host-vault'&&v.target==='/vault'));
+});
+test('Linux host mode reaches a loopback-only Ollama server',{skip:!dockerAvailable&&!process.env.STUDYHUB_COMPOSE_HOST_CONFIG},()=>{
+ const result=process.env.STUDYHUB_COMPOSE_HOST_CONFIG
+  ? {status:0,stdout:readFileSync(process.env.STUDYHUB_COMPOSE_HOST_CONFIG,'utf8')}
+  : spawnSync('docker',['compose','--env-file','/dev/null','-f','compose.yaml','-f','compose.host.yaml','config','--format','json'],{cwd:root,encoding:'utf8'});
+ assert.equal(result.status,0,result.stderr);
+ const service=JSON.parse(result.stdout).services.studyhub;
+ assert.equal(service.network_mode,'host');
+ assert.ok(!service.ports?.length);
+ assert.equal(service.environment.STUDYHUB_OLLAMA_URL,'http://127.0.0.1:11434');
+ assert.equal(service.environment.STUDYHUB_BIND,'127.0.0.1:8082');
 });
 test('image packages one server, logo, health script and file extraction tools',()=>{
  const dockerfile=readFileSync(new URL('../Dockerfile',import.meta.url),'utf8');
