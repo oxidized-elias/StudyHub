@@ -168,6 +168,11 @@ pub async fn call_logged(
     json_mode: bool,
     scope: runtime::Scope,
 ) -> AResult<String> {
+    // Apply the same portable text format to generation, tutoring, grading and repairs.
+    let system = format!(
+        "{system}\n{}",
+        r#"For learner-facing text fields and prose, use Obsidian-compatible Markdown. Write inline mathematics as $...$ and display mathematics as $$...$$ on separate lines, using KaTeX-supported LaTeX. Use fenced mermaid blocks only for useful diagrams, with blank lines around fences; do not put formulas in Mermaid labels or replace a written problem with a diagram. Keep code and canvas HTML/CSS/JavaScript in their requested formats. Keep titles, topic labels and identifiers plain text. When returning JSON, escape every LaTeX backslash as a double backslash and encode newlines inside strings; do not wrap the JSON object in Markdown fences."#
+    );
     let started = std::time::Instant::now();
     let endpoint = reqwest::Url::parse(&p.base_url)
         .map(|url| url.origin().ascii_serialization())
@@ -181,7 +186,7 @@ pub async fn call_logged(
     );
     let result: AResult<String> = async {
         ensure!(user.chars().count()+system.chars().count()<(p.context as usize).saturating_mul(3),"Selected material exceeds this provider's context budget. Select fewer sources or increase the configured context.");
-        let (url,body,headers)=request(p,system,user,json_mode)?;
+        let (url,body,headers)=request(p,&system,user,json_mode)?;
         let mut req=a.http.post(url).json(&body);for(k,v)in headers{req=req.header(k,v);}
         runtime::log(a,scope,"provider_wait","Waiting for the model server; this may include loading weights, prompt processing and generation",json!({}));
         let response=req.send().await.map_err(|e|anyhow!("{}",if e.is_timeout(){"Model request timed out. Check model loading, available memory and server logs.".to_string()}else{format!("Cannot reach model server: {}",e.without_url())}))?;

@@ -45,6 +45,12 @@ These integration smoke tests start the integrated executable, fake Ollama and t
 - `history_delete.cjs`, `model_select.cjs`, `warning_dismiss.cjs`, `live_logs.cjs`, `task_controls.cjs`, `notifications.cjs`, `storage_reset.cjs`: scoped controls and lifecycle regressions.
 - `render.cjs`, `learning_render.cjs`: real Marked/KaTeX rendering, code protection, citations and stored math repair.
 
+## Learning content formatting
+
+Learner-facing AI text uses Obsidian-compatible Markdown: `$...$` for inline math, `$$...$$` on separate lines for display math, and fenced `mermaid` blocks for diagrams. Math uses the bundled KaTeX runtime's supported LaTeX commands. JSON responses must double LaTeX backslashes and escape embedded newlines. Titles and topic labels stay plain text. Canvas HTML/CSS/JavaScript keeps its own format.
+
+Practice generation requests complete written application problems with concrete givens, units where relevant, and a clear task, using methods supported by the selected notes. Explicit requests for recall questions and term/definition flashcards retain their respective styles. Notes import preserves the supplied problems rather than inventing new ones. Notes, chat, practice, result reviews, journal entries and flashcard hints render content through their Markdown viewers; parser and component checks cover portable problem formatting.
+
 ## Container checks
 
 `npm run test:docker-config` checks health-check logic and resolved Compose settings without a daemon. `docker build -t studyhub:smoke .` followed by `node tests/docker-smoke.mjs studyhub:smoke` checks the actual image, graceful shutdown and persistent data/vault mounts using disposable resources. The Docker Images workflow runs these checks on native amd64 and arm64 runners, then publishes their tested images and a combined GHCR manifest only for main/version refs. Pull requests never publish. See [Docker setup](DOCKER.md).

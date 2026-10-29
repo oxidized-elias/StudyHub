@@ -18,3 +18,6 @@ result=render('## Motion\n\n<!-- studyhub:big-ideas:start -->\n[[Physics/Big Ide
 assert.doesNotMatch(result,/studyhub:big-ideas/);assert.match(result,/data-note="Physics\/Big Ideas - Master List"/);assert.match(result,/Physics big ideas/);
 result=render('```text\n<!-- studyhub:big-ideas:start -->\n```');assert.match(result,/studyhub:big-ideas:start/);
 console.log('PASS: real Markdown parsing and KaTeX math; folded/nested callouts, lists, tables, tasks, CRLF/frontmatter, wikilinks, code protection, tilde Mermaid fences and escaped aliases.');
+
+result=render('A rectangle has length $4\\,\\mathrm{cm}$ and area $24\\,\\mathrm{cm}^2$. **Find its width.**\n\n$$\nw=\\frac{24}{4}\n$$\n\n```mermaid\nflowchart LR\nA[Area] --> W[Width]\n```');
+assert.match(result,/<strong>Find its width/);assert.match(result,/katex-display/);assert.match(result,/language-mermaid/);assert.doesNotMatch(result,/math-fallback|katex-error/);

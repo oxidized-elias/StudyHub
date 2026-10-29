@@ -35,7 +35,7 @@ Rules:
 - Write connections INLINE, in the prose of the section where they apply: a natural sentence that names the other note as [[Exact Title]] (or another big idea in this same note) and says how they connect. Do NOT write a separate "Connects to" line, a Links section or a Connections section. Keep important ideas even when they have no related note; connections are optional. Never force a connection to an unrelated note.
 - Reuse an existing subject big-idea name as an H2 heading when it accurately describes the supplied content; this connects notes across courses. Do not merge distinct concepts just because their names are similar.
 - You may create your own section headings and organization; the content under them must still come only from the transcript.
-- Use valid Markdown with blank lines around fenced code blocks.
+- Use valid Markdown with blank lines around fenced code blocks. Preserve written problems, givens, units and worked steps from the transcript. Format inline math as $...$ and display math as $$...$$ on separate lines using KaTeX-supported LaTeX; double every LaTeX backslash in JSON strings.
 - Do not generate Mermaid relationship diagrams. Explain ideas in the requested Note Style and connect related notes with inline [[links]]. A central Big Ideas - Master List.md topic index is maintained by the application.
 - Do NOT include the user input block, a Connections section or a Links section. The "links" field in your JSON is only a checklist: every target in it must also appear inline in the body as [[Exact Title]].
 - A GUIDANCE section, if present, only steers which ideas to emphasize. Never answer questions, explain, clarify, or add content from it. Your only output is the note JSON.

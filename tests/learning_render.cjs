@@ -11,3 +11,6 @@ output=render('x^12');assert.match(output,/class="katex"/);assert.match(output,/
 output=render('```text\nf(x) = -2x^5 + 3x^2 - 1\n```');assert.doesNotMatch(output,/class="katex"/);assert.match(output,/x\^5/);
 output=render('Use your notes to explain why.');assert.doesNotMatch(output,/class="katex"/);
 console.log('PASS: persisted LaTeX control-character repair, grouped section citations, literal code protection, and connected-note links.');
+
+output=render('A rectangle has length $4\\,\\mathrm{cm}$ and area $24\\,\\mathrm{cm}^2$. **Find its width.**\n\n$$\nw=\\frac{24}{4}\n$$\n\n```mermaid\nflowchart LR\nA[Area] --> W[Width]\n```');
+assert.match(output,/<strong>Find its width/);assert.match(output,/katex-display/);assert.match(output,/language-mermaid/);assert.doesNotMatch(output,/math-fallback|katex-error/);
