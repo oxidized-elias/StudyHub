@@ -35,13 +35,13 @@ Dependencies:
 * An AI provider or a reachable model server, configured after startup
 
 ```bash
-docker pull ghcr.io/oxidized-elias/studyhub:sha-944ad9ff241a50c0e92013c5af2ada8db0e901ea
+docker pull ghcr.io/oxidized-elias/studyhub:latest
 docker run -d --name studyhub --init --restart unless-stopped \
   -p 127.0.0.1:8082:8082 \
   -v studyhub_data:/app/data \
   -v studyhub_vault:/vault \
   --add-host=host.docker.internal:host-gateway \
-  ghcr.io/oxidized-elias/studyhub:sha-944ad9ff241a50c0e92013c5af2ada8db0e901ea
+  ghcr.io/oxidized-elias/studyhub:latest
 ```
 
 Open **http://localhost:8082**. The command above uses the published commit image; use `ghcr.io/oxidized-elias/studyhub:latest` for the latest successful `main` build. Both named volumes keep your data when the container is replaced.
