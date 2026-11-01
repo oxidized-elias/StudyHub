@@ -78,6 +78,29 @@ docker compose up -d --build
 
 See [Docker setup](docs/DOCKER.md) for host vault mounts, remote access, backups and model connections.
 
+### Connecting Docker to host services
+
+When using bridge networking with Ollama on the Docker host, include this mapping under the StudyHub service in your Compose file (the bundled `compose.yaml` already includes it):
+
+```yaml
+services:
+  studyhub:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      STUDYHUB_OLLAMA_URL: http://host.docker.internal:11434
+```
+
+For `docker run`, use `--add-host=host.docker.internal:host-gateway`, as in the examples above. Set **both the tutoring profile and Note Import Models** server URLs to `http://host.docker.internal:11434`. Saved settings take precedence over environment defaults.
+
+On Linux, this mapping resolves the host address but cannot reach Ollama if it listens only on `127.0.0.1`. Either configure Ollama to listen on an interface reachable from Docker, or use the included host-network override:
+
+```bash
+docker compose -f compose.yaml -f compose.host.yaml up -d --build
+```
+
+With host networking, use `http://127.0.0.1:11434` in both saved settings. The override binds StudyHub to host port `8082`; published port mappings do not apply. Recreate the container after changing networking. See [Docker setup](docs/DOCKER.md) for more details.
+
 ### Manual Install:
 
 Dependencies:
