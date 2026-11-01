@@ -563,6 +563,62 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn failure_report_keeps_original_names_and_errors() {
+        let f = Fixture::new();
+        let (sid, _) = f.pending();
+        save_originals(&f.app, sid, &[("Book (14).pdf".into(), b"source".to_vec())]).unwrap();
+        setcol(&f.app, sid, "status", "failed");
+        setcol(&f.app, sid, "error", "Invalid JSON");
+        let Json(rows) = sessions(State(f.app.clone())).await.unwrap();
+        let row = rows
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|r| r["id"] == sid)
+            .unwrap();
+        assert_eq!(row["source_names"], json!(["Book (14).pdf"]));
+        assert_eq!(row["error"], "Invalid JSON");
+        assert_eq!(row["status"], "failed");
+    }
+
+    #[tokio::test]
+    async fn manual_crop_uses_full_source_pixels_and_rejects_other_session_files() {
+        let f = Fixture::new();
+        let (sid, mut pending) = f.pending();
+        let name = format!("source-diagram-{sid}-1-0.png");
+        let up = f.app.vault().await.join("Math/PreCalculus/Uploaded Notes");
+        std::fs::create_dir_all(&up).unwrap();
+        let original = image::RgbImage::from_fn(100, 200, |x, y| image::Rgb([x as u8, y as u8, 7]));
+        original
+            .save(up.join(format!("source-page-{sid}-1.png")))
+            .unwrap();
+        original.save(up.join(&name)).unwrap();
+        pending.files.push(name.clone());
+        stage_review(&f.app, sid, &pending).unwrap();
+        let result = diagram_crop_put(
+            State(f.app.clone()),
+            AxPath((sid, name.clone())),
+            Json(json!({"box":[100,200,600,800]})),
+        )
+        .await;
+        assert!(result.is_ok());
+        let cropped = image::open(up.join(&name)).unwrap().to_rgb8();
+        assert_eq!(cropped.dimensions(), (50, 120));
+        assert_eq!(cropped.get_pixel(0, 0), original.get_pixel(10, 40));
+        let (_, page) = diagram_page(&f.app, sid, &name).await.unwrap();
+        assert_eq!((page.width(), page.height()), (100, 200));
+        assert!(diagram_page(&f.app, sid + 1, &name).await.is_err());
+        assert!(diagram_page(&f.app, sid, "../anything.png").await.is_err());
+        assert!(diagram_crop_put(
+            State(f.app.clone()),
+            AxPath((sid, name)),
+            Json(json!({"box":[600,200,100,800]}))
+        )
+        .await
+        .is_err());
+    }
+
+    #[tokio::test]
     async fn manual_note_preserves_markdown_and_rejects_overwrites_and_empty_content() {
         let f = Fixture::new();
         let body = "# My notes\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n```mermaid\nsequenceDiagram\nAlice->>Bob: Hello\n```\n\n$x^2$\n";

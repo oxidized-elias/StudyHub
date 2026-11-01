@@ -27,6 +27,8 @@ use review::*;
 // ---------- prompts ----------
 const AI1: &str = r##"You convert a student's transcribed physical notes into exactly ONE Obsidian note (Markdown) for a linked knowledge vault.
 Rules:
+- Preserve all original diagram Markdown image references from the transcript exactly, next to their related content. Never redraw or replace a source image.
+- Recreate every source drawing/diagram visually next to its related explanation; never omit it or replace it with only a bracketed description. For spatial drawings (triangles, ramps, free-body diagrams, apparatus), use a fenced ```svg block containing a complete SVG with xmlns, viewBox and an accessible title. Draw actual geometry using paths, lines, polygons, circles and text; use explicit readable colors and arrowheads made from polygons. Preserve relative positions, angles, labels and arrow directions. Copy the SOURCE drawing, not a textbook-corrected free-body diagram. Before drawing, inventory every visible shape, line, arrowhead and label in a nearby Markdown caption; the SVG must contain exactly those features. Preserve labels exactly, including F(N), subscripts and component labels, and keep each label next to its original line. Do not add gravity, friction, normal forces, arrowheads, a block, or angle markers merely because physics suggests them. Do not move arrow origins to a common center unless the source does so. Preserve visible component/construction lines separately from force vectors; keep a plain line plain. Put unclear labels in the caption rather than replacing them with assumed force names. Use text with tspan for subscripts and keep labels clear of edges and shapes. Never replace physical geometry with a Mermaid flowchart, relationship graph, disconnected boxes, ASCII art or a prose-only description. Use Mermaid only for source flowcharts or other non-spatial relationships. When embedded in a JSON body string, use single quotes for SVG attributes and encode line breaks as JSON newline escapes. Keep SVG concise with only necessary shapes and labels. The standard SVG xmlns namespace is permitted and is not an internet source. SVG must be self-contained: no scripts, event handlers, external resources, stylesheets, images or foreignObject. Use plain text labels, not LaTeX inside SVG. Do not invent measurements, forces or unreadable labels; mark uncertain details in nearby prose. Preserve these visual blocks through note generation and revision.
 - Coordinate-plane graphs: preserve them as fenced ```graph blocks containing JSON: {"title":"Graph", "x":[-5,5], "y":[-5,5], "xLabel":"x", "yLabel":"y", "series":[{"type":"line", "label":"visible curve", "points":[[-2,4],[0,0,"origin"],[2,4]]}]}. Use type "points" for unconnected points and separate line series for discontinuous branches; line series connect samples with straight segments. Record only coordinates readable from the source, never invent an equation or exact samples from an unclear sketch. State uncertainty in prose and use [UNCLEAR: graph details] when scale or coordinates cannot be read. All coordinates must be within the stated numeric axis ranges; preserve labels and negative values. Keep these blocks intact through note generation and revision. Do not turn coordinate graphs into Mermaid flowcharts.
 - Use ONLY content from the TRANSCRIPT and USER INPUT. Never add facts, sources, citations or URLs from the internet or your own knowledge. Outside knowledge may only help you decide which ideas are the big ideas.
 - Create exactly ONE note. Big ideas are H2 sections (## headings) inside it, never extra notes.
@@ -36,7 +38,7 @@ Rules:
 - Reuse an existing subject big-idea name as an H2 heading when it accurately describes the supplied content; this connects notes across courses. Do not merge distinct concepts just because their names are similar.
 - You may create your own section headings and organization; the content under them must still come only from the transcript.
 - Use valid Markdown with blank lines around fenced code blocks. Preserve written problems, givens, units and worked steps from the transcript. Format inline math as $...$ and display math as $$...$$ on separate lines using KaTeX-supported LaTeX; double every LaTeX backslash in JSON strings.
-- Do not generate Mermaid relationship diagrams. Explain ideas in the requested Note Style and connect related notes with inline [[links]]. A central Big Ideas - Master List.md topic index is maintained by the application.
+- Do not generate new Mermaid relationship diagrams; this does not prohibit recreating diagrams present in the source. Explain ideas in the requested Note Style and connect related notes with inline [[links]]. A central Big Ideas - Master List.md topic index is maintained by the application.
 - Do NOT include the user input block, a Connections section or a Links section. The "links" field in your JSON is only a checklist: every target in it must also appear inline in the body as [[Exact Title]].
 - A GUIDANCE section, if present, only steers which ideas to emphasize. Never answer questions, explain, clarify, or add content from it. Your only output is the note JSON.
 - If a CONFIRMED PLAN is present, write the note from it: every big idea section must match a plan item and keep its stated connection.
@@ -44,7 +46,157 @@ Rules:
 Infer a concise unit_name from the supplied notes and context; never invent a unit number.
 Reply with JSON only: {"title":"...","unit_name":"...","summary":"one sentence","body":"markdown","links":[{"target":"Exact Title","how":"how the ideas connect"}]}"##;
 
-const TRANSCRIBE: &str = "Transcribe the notes in this image exactly as written, keeping headings, lists and structure. Describe other drawings/diagrams in [brackets]. Coordinate-plane graphs: preserve them as fenced ```graph blocks containing JSON: {\"title\":\"Graph\", \"x\":[-5,5], \"y\":[-5,5], \"xLabel\":\"x\", \"yLabel\":\"y\", \"series\":[{\"type\":\"line\", \"label\":\"visible curve\", \"points\":[[-2,4],[0,0,\"origin\"],[2,4]]}]}. Use type \"points\" for unconnected points and separate line series for discontinuous branches; line series connect samples with straight segments. Record only coordinates readable from the source, never invent an equation or exact samples from an unclear sketch. State uncertainty in prose and use [UNCLEAR: graph details] when scale or coordinates cannot be read. All coordinates must be within the stated numeric axis ranges; preserve labels and negative values. Keep these blocks intact through note generation and revision. Do not turn coordinate graphs into Mermaid flowcharts. Output Markdown transcription only; add nothing. If you cannot read a word, symbol or part of a drawing with confidence, never guess: write [UNCLEAR: where it is and what it looks like] in its place (at most 5 per page).";
+const TRANSCRIBE: &str = "Transcribe the notes in this image exactly as written, keeping headings, lists and structure. Recreate every source drawing/diagram visually next to its related explanation; never omit it or replace it with only a bracketed description. For spatial drawings (triangles, ramps, free-body diagrams, apparatus), use a fenced ```svg block containing a complete SVG with xmlns, viewBox and an accessible title. Draw actual geometry using paths, lines, polygons, circles and text; use explicit readable colors and arrowheads made from polygons. Preserve relative positions, angles, labels and arrow directions. Copy the SOURCE drawing, not a textbook-corrected free-body diagram. Before drawing, inventory every visible shape, line, arrowhead and label in a nearby Markdown caption; the SVG must contain exactly those features. Preserve labels exactly, including F(N), subscripts and component labels, and keep each label next to its original line. Do not add gravity, friction, normal forces, arrowheads, a block, or angle markers merely because physics suggests them. Do not move arrow origins to a common center unless the source does so. Preserve visible component/construction lines separately from force vectors; keep a plain line plain. Put unclear labels in the caption rather than replacing them with assumed force names. Use text with tspan for subscripts and keep labels clear of edges and shapes. Never replace physical geometry with a Mermaid flowchart, relationship graph, disconnected boxes, ASCII art or a prose-only description. Use Mermaid only for source flowcharts or other non-spatial relationships. When embedded in a JSON body string, use single quotes for SVG attributes and encode line breaks as JSON newline escapes. Keep SVG concise with only necessary shapes and labels. The standard SVG xmlns namespace is permitted and is not an internet source. SVG must be self-contained: no scripts, event handlers, external resources, stylesheets, images or foreignObject. Use plain text labels, not LaTeX inside SVG. Do not invent measurements, forces or unreadable labels; mark uncertain details in nearby prose. Preserve these visual blocks through note generation and revision. Coordinate-plane graphs: preserve them as fenced ```graph blocks containing JSON: {\"title\":\"Graph\", \"x\":[-5,5], \"y\":[-5,5], \"xLabel\":\"x\", \"yLabel\":\"y\", \"series\":[{\"type\":\"line\", \"label\":\"visible curve\", \"points\":[[-2,4],[0,0,\"origin\"],[2,4]]}]}. Use type \"points\" for unconnected points and separate line series for discontinuous branches; line series connect samples with straight segments. Record only coordinates readable from the source, never invent an equation or exact samples from an unclear sketch. State uncertainty in prose and use [UNCLEAR: graph details] when scale or coordinates cannot be read. All coordinates must be within the stated numeric axis ranges; preserve labels and negative values. Keep these blocks intact through note generation and revision. Do not turn coordinate graphs into Mermaid flowcharts. Output Markdown transcription only; add nothing. If you cannot read a word, symbol or part of a drawing with confidence, never guess: write [UNCLEAR: where it is and what it looks like] in its place (at most 5 per page).";
+
+const TRANSCRIBE_CROPS: &str = r#"Transcribe this page as Markdown. Preserve the written notes, equations and worked steps. For EVERY drawing, diagram, or graph, do NOT redraw it. Instead place a fenced crop block at its position, containing JSON {"box":[left,top,right,bottom]}, with coordinates normalized to 0..1000 relative to the entire page. Include every arrow, label and shape in the crop with generous padding. Each diagram gets its own crop. Never invent image filenames. If the diagram boundaries are uncertain, include the full page using [0,0,1000,1000]. For unreadable words use [UNCLEAR: description], at most five per page. Output Markdown only."#;
+
+fn crop_bounds(value: &Value, width: u32, height: u32) -> AResult<(u32, u32, u32, u32)> {
+    let box_values = value["box"]
+        .as_array()
+        .ok_or_else(|| anyhow!("Missing diagram crop box"))?;
+    if box_values.len() != 4 || width == 0 || height == 0 {
+        bail!("Invalid diagram crop box");
+    }
+    let mut b = [0.0; 4];
+    for (i, v) in box_values.iter().enumerate() {
+        b[i] = v
+            .as_f64()
+            .filter(|n| n.is_finite() && *n >= 0.0 && *n <= 1000.0)
+            .ok_or_else(|| anyhow!("Invalid diagram crop coordinate"))?;
+    }
+    if b[2] <= b[0] || b[3] <= b[1] {
+        bail!("Empty diagram crop");
+    }
+    let x = (b[0] * width as f64 / 1000.0).floor() as u32;
+    let y = (b[1] * height as f64 / 1000.0).floor() as u32;
+    let right = (b[2] * width as f64 / 1000.0).ceil() as u32;
+    let bottom = (b[3] * height as f64 / 1000.0).ceil() as u32;
+    Ok((x, y, right - x, bottom - y))
+}
+
+fn extract_diagram_crops(
+    text: &str,
+    jpg: &[u8],
+    up: &Path,
+    sid: i64,
+    page: usize,
+    saved: &mut Vec<String>,
+) -> AResult<String> {
+    let arrays = regex::Regex::new(r#"\[\s*(\{\s*"box"\s*:\s*\[[^\]]*\]\s*\})\s*\]"#)?;
+    let normalized = arrays.replace_all(text, "$1");
+    let text = normalized.as_ref();
+    let blocks = regex::Regex::new(
+        r#"(?ms)^```crop[ \t]*\r?\n(.*?)^```[ \t]*\r?$|^```(?:json)?[ \t]*\r?\n[ \t\r\n]*(\{\s*"box"\s*:\s*\[[^\]]*\]\s*\})[ \t\r\n]*^```[ \t]*\r?$|(\{\s*"box"\s*:\s*\[[^\]]*\]\s*\})"#,
+    )?;
+    let image = image::load_from_memory(jpg)?;
+    let page_name = format!("source-page-{sid}-{page}.png");
+    image.save(up.join(&page_name))?;
+    if !saved.contains(&page_name) {
+        saved.push(page_name);
+    }
+    let mut output = String::new();
+    let mut end = 0;
+    for (index, c) in blocks.captures_iter(text).enumerate() {
+        let whole = c.get(0).unwrap();
+        output.push_str(&text[end..whole.start()]);
+        // Bad localization preserves the entire source page rather than dropping content.
+        let coordinates = c
+            .get(1)
+            .or_else(|| c.get(2))
+            .or_else(|| c.get(3))
+            .unwrap()
+            .as_str();
+        let bounds = serde_json::from_str::<Value>(coordinates)
+            .ok()
+            .and_then(|v| crop_bounds(&v, image.width(), image.height()).ok())
+            .unwrap_or((0, 0, image.width(), image.height()));
+        let name = format!("source-diagram-{sid}-{page}-{index}.png");
+        image
+            .crop_imm(bounds.0, bounds.1, bounds.2, bounds.3)
+            .save(up.join(&name))?;
+        if !saved.contains(&name) {
+            saved.push(name.clone());
+        }
+        output.push_str(&format!("![Original diagram](../Uploaded%20Notes/{name})"));
+        end = whole.end();
+    }
+    output.push_str(&text[end..]);
+    Ok(output)
+}
+
+fn verified_diagram_crop(reply: &str) -> bool {
+    parse_json(reply).ok().is_some_and(|v| {
+        v["contains_diagram"] == true && v["complete"] == true && v["matches_source"] == true
+    })
+}
+
+async fn verify_diagram_crops(
+    a: &App,
+    s: &Settings,
+    model: &str,
+    sid: i64,
+    jpg: &[u8],
+    up: &Path,
+    names: &[String],
+) -> AResult<()> {
+    for name in names
+        .iter()
+        .filter(|name| name.starts_with("source-diagram-"))
+    {
+        let path = up.join(name);
+        let crop = std::fs::read(&path)?;
+        let mut encoded = std::io::Cursor::new(Vec::new());
+        image::load_from_memory(&crop)?.write_to(&mut encoded, image::ImageFormat::Jpeg)?;
+        let images = [B64.encode(jpg), B64.encode(encoded.into_inner())];
+        let result=llm(a,s,Call{
+            model,ctx:4096,json:true,
+            system:"Check diagram crop accuracy. Image 1 is the full source page. Image 2 is a proposed diagram crop. Return JSON only: {\"contains_diagram\":true/false,\"complete\":true/false,\"matches_source\":true/false}. Approve ONLY if image 2 contains an actual source drawing/graph with ALL its arrowheads, labels and shapes visible, and corresponds exactly to a diagram in image 1. A crop of handwriting/prose/equations without a drawing is NOT a diagram. A clipped diagram is NOT complete. If uncertain, return false.",
+            user:"Verify the proposed crop against the full page.",images:&images,
+        }).await;
+        let verified = result
+            .as_ref()
+            .is_ok_and(|reply| verified_diagram_crop(&reply.text));
+        if !verified {
+            // A complete source page is preferable to a misleading or clipped crop.
+            image::load_from_memory(jpg)?.save(&path)?;
+        }
+        log(
+            a,
+            sid,
+            "diagram_crop",
+            json!({"file":name,"verified":verified,"fallback_full_page":!verified}),
+        );
+    }
+    Ok(())
+}
+
+fn original_images_only(body: &str, transcript: &str) -> String {
+    let visual=regex::Regex::new(r"(?ms)^```(?:svg|diagram|mermaid|graph)[ \t]*\r?\n.*?^```[ \t]*\r?$|(?i:<svg\b[^>]*>.*?</svg>)").unwrap();
+    let body = visual.replace_all(body, "");
+    let images = regex::Regex::new(r"!\[[^\]\n]*\]\([^\)\n]*\)").unwrap();
+    let originals: Vec<_> = images
+        .find_iter(transcript)
+        .map(|m| m.as_str())
+        .filter(|m| m.starts_with("![Original diagram](../Uploaded%20Notes/source-diagram-"))
+        .collect();
+    let mut seen = std::collections::HashSet::new();
+    let mut result = images
+        .replace_all(&body, |c: &regex::Captures<'_>| {
+            if originals.contains(&&c[0]) && seen.insert(c[0].to_string()) {
+                c[0].to_string()
+            } else {
+                String::new()
+            }
+        })
+        .into_owned();
+    for original in originals {
+        if seen.insert(original.to_string()) {
+            result.push_str("\n\n");
+            result.push_str(original);
+        }
+    }
+    result
+}
 
 // ---------- settings ----------
 #[derive(Serialize, Deserialize, Clone, Default)]
@@ -83,6 +235,7 @@ struct Settings {
     extra_prompt: String,
     web_search: bool,
     auto_convert: bool,
+    original_diagram_images: bool,
     lessons_store: bool,
     lessons_use: bool,
     lessons_need_user: bool,
@@ -123,6 +276,7 @@ impl Default for Settings {
             extra_prompt: String::new(),
             web_search: true,
             auto_convert: true,
+            original_diagram_images: false,
             lessons_store: true,
             lessons_use: true,
             lessons_need_user: true,
@@ -323,6 +477,10 @@ pub async fn create_router() -> AResult<Router> {
             get(original_source),
         )
         .route("/api/review/session/:id/pdf/:name", get(pdf_file))
+        .route(
+            "/api/review/session/:id/diagram/:name",
+            get(diagram_page_get).put(diagram_crop_put),
+        )
         .route("/api/review/session/:id/question", get(question))
         .route("/api/review/session/:id/page", get(page_img))
         .route("/api/review/session/:id/answer", post(answer))
@@ -464,10 +622,63 @@ fn fm(t: &str, k: &str) -> String {
         .to_string()
 }
 fn parse_json(s: &str) -> AResult<Value> {
-    let (a, b) = (s.find('{'), s.rfind('}'));
-    match (a, b) {
-        (Some(a), Some(b)) if b > a => Ok(serde_json::from_str(&s[a..=b])?),
-        _ => bail!("no JSON object in reply"),
+    // Ignore provider reasoning, then decode one complete object rather than
+    // joining the first opening brace to the last closing brace in the reply.
+    let s = s.rsplit_once("</think>").map_or(s, |(_, answer)| answer);
+    let mut last_error = None;
+    for (index, _) in s.match_indices('{') {
+        let mut stream = serde_json::Deserializer::from_str(&s[index..]).into_iter::<Value>();
+        match stream.next() {
+            Some(Ok(value)) if value.is_object() => return Ok(value),
+            Some(Err(error)) => last_error = Some(error),
+            _ => {}
+        }
+        // A malformed top-level object must not be replaced by a nested fragment.
+        if s[..index].trim().is_empty() || s[..index].trim() == "```json" {
+            break;
+        }
+    }
+    match last_error {
+        Some(error) => Err(error.into()),
+        None => bail!("no JSON object in reply"),
+    }
+}
+
+// The note writer may organize the prose, but must not redesign source sketches.
+fn preserve_source_drawings(body: &str, transcript: &str) -> String {
+    let blocks =
+        regex::Regex::new(r"(?ms)^```(?:svg|diagram)[ \t]*\r?\n.*?^```[ \t]*\r?$|!\[Original diagram\]\(\.\./Uploaded%20Notes/source-diagram-[0-9-]+\.png\)").unwrap();
+    let originals: Vec<_> = blocks.find_iter(transcript).map(|m| m.as_str()).collect();
+    if originals.is_empty() {
+        return body.to_string();
+    }
+    let mut index = 0;
+    let mut result = blocks
+        .replace_all(body, |_: &regex::Captures<'_>| {
+            let replacement = originals.get(index).copied().unwrap_or("");
+            index += 1;
+            replacement.to_string()
+        })
+        .into_owned();
+    for original in originals.iter().skip(index) {
+        result.push_str("\n\n");
+        result.push_str(original);
+    }
+    result
+}
+
+fn contains_external_url(value: &Value) -> bool {
+    match value {
+        Value::String(text) => {
+            // This XML namespace identifies SVG syntax; it is not an internet source.
+            let namespace =
+                regex::Regex::new(r#"xmlns\s*=\s*["']http://www\.w3\.org/2000/svg["']"#).unwrap();
+            let text = namespace.replace_all(text, "");
+            text.contains("http://") || text.contains("https://") || text.contains("www.")
+        }
+        Value::Array(items) => items.iter().any(contains_external_url),
+        Value::Object(fields) => fields.values().any(contains_external_url),
+        _ => false,
     }
 }
 
@@ -988,7 +1199,7 @@ fn check(d: &Value, titles: &[String]) -> Vec<String> {
     }
 
     let all = format!("{body}{}", d["links"]);
-    if all.contains("http://") || all.contains("https://") || all.contains("www.") {
+    if contains_external_url(&json!([body, d["links"]])) {
         p.push("Remove all URLs / internet sources".into());
     }
     let re = regex::Regex::new(r"\[\[([^\]|#]+)").unwrap();
@@ -1029,7 +1240,7 @@ Rules:
 - Use ONLY ideas that appear in the TRANSCRIPT, STUDENT CLARIFICATIONS and USER INPUT. Outside knowledge may only help you decide which ideas are the big ideas; never add facts, sources or URLs.
 - Connections are optional. Keep every important idea supported by the transcript, even if it has no connection. For a meaningful connection use an exact title from EXISTING NOTES or SELF: followed by another idea name in this plan. Otherwise use an empty connects_to and how. Never connect unrelated ideas just to supply a link.
 - The MASTER LIST contains shared ideas for this SUBJECT across courses. If the supplied content uses an existing idea, reuse its exact name for your big idea; connect to an existing note only when its exact title appears in EXISTING NOTES. Give genuinely new ideas a new name.
-- In "evidence" say where in the transcript the idea appears; in "how" say how the two things connect.
+- In "evidence" say where in the transcript the idea appears; in "how" say how the two things connect. Identify every source drawing/diagram in the relevant idea evidence so the writer includes its visual recreation, including diagrams attached to worked examples.
 - Put anything you are unsure about in "questions" so the reviewer can help clarify it.
 Reply with JSON only: {"big_ideas":[{"name":"...","evidence":"...","connects_to":"Exact Existing Title, SELF: other idea, or empty","how":"..."}],"questions":["..."]}"##;
 
@@ -1257,8 +1468,7 @@ fn plan_check(d: &Value, titles: &[String]) -> Vec<String> {
     if ideas.is_empty() {
         p.push("The plan needs at least one big idea".to_string());
     }
-    let blob = d.to_string();
-    if blob.contains("http://") || blob.contains("https://") || blob.contains("www.") {
+    if contains_external_url(d) {
         p.push("Remove all URLs / internet sources".to_string());
     }
     for i in &ideas {
@@ -1466,7 +1676,12 @@ async fn attempt(
     } else {
         format!("\n\nMASTER LIST OF BIG IDEAS ALREADY IN THIS SUBJECT (navigate it: when one of your big ideas already lives in a note listed here, connect to that note; new big ideas you confirm are added to this list by the system):\n{ms}")
     };
-    let user = format!("USER INPUT:\n{}\n\nEXISTING NOTES:\n{}\n\nTRANSCRIPT:\n{}{fx}{}{pl}{lsn}{mst}{extra}{feedback}", c.input, c.list, c.tx, c.gtxt);
+    let image_rule = if c.s.original_diagram_images {
+        "\nORIGINAL IMAGE MODE: Use ONLY the exact original diagram Markdown image references in TRANSCRIPT. Never create SVG, Mermaid, graph, diagram blocks, ASCII drawings, or extra images. Do not redraw any source diagram. This overrides all drawing instructions above.\n"
+    } else {
+        ""
+    };
+    let user = format!("{image_rule}USER INPUT:\n{}\n\nEXISTING NOTES:\n{}\n\nTRANSCRIPT:\n{}{fx}{}{pl}{lsn}{mst}{extra}{feedback}", c.input, c.list, c.tx, c.gtxt);
     let (d, _) = call_ai(
         c.a,
         c.s,
@@ -1481,7 +1696,7 @@ async fn attempt(
     )
     .await?;
     let Some(d) = d else {
-        return Ok((Value::Null, vec!["Reply was not valid JSON".to_string()]));
+        return Ok((Value::Null, vec!["Reply was not valid JSON. Return one complete JSON object only. Encode newlines as \\n, escape double quotes inside strings as \\\" and double LaTeX backslashes. Use single quotes for SVG attributes inside the JSON body string. Keep SVG concise; do not repeat elements unnecessarily.".to_string()]));
     };
     if (d.get("search").is_some() || d.get("read").is_some())
         && d.get("big_ideas").is_none()
@@ -1494,7 +1709,12 @@ async fn attempt(
     }
     let mut d = d;
     if let Some(body) = d["body"].as_str() {
-        d["body"] = json!(normalize_markdown(body));
+        let body = if c.s.original_diagram_images {
+            original_images_only(body, c.tx)
+        } else {
+            preserve_source_drawings(body, c.tx)
+        };
+        d["body"] = json!(normalize_markdown(&body));
     }
     let d = if plan.is_some() {
         normalize_internal_links(d, c.titles)
@@ -1610,7 +1830,7 @@ async fn generate(
         &per_note_style
     };
     let style = match effective_style.as_str() { "text_chunks" => "Text chunks: use short connected paragraphs under descriptive headings.", "hybrid" => "Combined style: use short, lightly written explanatory text chunks, then concise bullet points for key facts and steps.", _ => "Bullet points: use concise bullet lists under descriptive headings." };
-    let gtxt = format!("\nNote Style: {style}\nDo not include relationship diagrams. Link directly to related note files.\nGUIDANCE: {}", guidance.trim());
+    let gtxt = format!("\nNote Style: {style}\nDo not add relationship diagrams. Preserve all source drawings and diagrams as visual blocks beside the relevant content. Link directly to related note files.\nGUIDANCE: {}", guidance.trim());
     let reader = Reader {
         vault: vault.to_path_buf(),
         notes: cands
@@ -1894,7 +2114,7 @@ async fn process(
     let up = cdir.join("Uploaded Notes");
     std::fs::create_dir_all(&up)?;
     // the source files are saved right away so a failed upload keeps them (for Retry) and Delete can clean them up
-    let saved: Vec<String> = match &resume {
+    let mut saved: Vec<String> = match &resume {
         Some(r) => r.files.clone(),
         None => {
             let mut v = vec![];
@@ -1944,6 +2164,11 @@ async fn process(
         let n = pages.len();
         let uncl = regex::Regex::new(r"\[UNCLEAR:\s*([^\]]{1,200})\]").unwrap();
         let mut parts: Vec<(String, String)> = vec![];
+        let transcription_prompt = if s.original_diagram_images {
+            TRANSCRIBE_CROPS
+        } else {
+            TRANSCRIBE
+        };
         for (i, (jpg, _, _)) in pages.iter().enumerate() {
             let o = llm(
                 a,
@@ -1952,7 +2177,7 @@ async fn process(
                     model: &m.vision,
                     ctx: 4096,
                     json: false,
-                    system: TRANSCRIBE,
+                    system: transcription_prompt,
                     user: "Transcribe this page.",
                     images: &[B64.encode(jpg)],
                 },
@@ -1962,9 +2187,16 @@ async fn process(
                 a,
                 sid,
                 "transcribe",
-                json!({"actor":format!("Vision model (page {}/{n})", i + 1),"model":m.vision,"context":format!("[system]\n{TRANSCRIBE}\n[1 page image attached]"),"thinking":o.thinking,"output":o.text}),
+                json!({"actor":format!("Vision model (page {}/{n})", i + 1),"model":m.vision,"context":format!("[system]\n{transcription_prompt}\n[1 page image attached]"),"thinking":o.thinking,"output":o.text}),
             );
-            let mut text = o.text.clone();
+            let mut text = if s.original_diagram_images {
+                let before = saved.len();
+                let text = extract_diagram_crops(&o.text, jpg, &up, sid, i + 1, &mut saved)?;
+                verify_diagram_crops(a, s, &m.vision, sid, jpg, &up, &saved[before..]).await?;
+                original_images_only(&text, &text)
+            } else {
+                o.text.clone()
+            };
             let qs: Vec<(String, String)> = uncl
                 .captures_iter(&o.text)
                 .take(5)
@@ -2008,6 +2240,9 @@ async fn process(
                 .join("\n\n")
         }
     };
+    if ex.is_none() {
+        setcol(a, sid, "pdf", &saved.join("\n"));
+    }
     let tx = match &ex {
         Some(e) => format!("{}\n\n--- Added pages ---\n{new_tx}", e.tx),
         None => new_tx.clone(),
@@ -2494,6 +2729,9 @@ async fn retry(State(a): State<Arc<App>>, AxPath(id): AxPath<i64>) -> R<Json<Val
             if resume_tx.is_none() {
                 let mut pdfs: Vec<(String, Vec<u8>)> = vec![];
                 for f in &files {
+                    if f.starts_with("source-diagram-") || f.starts_with("source-page-") {
+                        continue;
+                    }
                     let b = std::fs::read(up.join(f))?;
                     if f.ends_with(".md") {
                         texts.push((f.clone(), String::from_utf8_lossy(&b).to_string()));
@@ -2633,11 +2871,11 @@ async fn create_note(State(a): State<Arc<App>>, Json(note): Json<NewNote>) -> R<
 
 async fn sessions(State(a): State<Arc<App>>) -> R<Json<Value>> {
     let db = a.db.lock().unwrap();
-    let mut st = db.prepare("SELECT id,created,class_type,course,unit,lesson,title,status,error FROM sessions ORDER BY id DESC")?;
+    let mut st = db.prepare("SELECT id,created,class_type,course,unit,lesson,title,status,error,(SELECT GROUP_CONCAT(filename, char(10)) FROM source_files WHERE session_id=sessions.id) FROM sessions ORDER BY id DESC")?;
     let rows = st
         .query_map([], |r| {
             Ok(json!({"id":r.get::<_,i64>(0)?,"created":r.get::<_,i64>(1)?,"class_type":r.get::<_,String>(2)?,"course":r.get::<_,String>(3)?,
-                "unit":r.get::<_,String>(4)?,"lesson":r.get::<_,String>(5)?,"title":r.get::<_,String>(6)?,"status":r.get::<_,String>(7)?,"error":r.get::<_,String>(8)?}))
+                "unit":r.get::<_,String>(4)?,"lesson":r.get::<_,String>(5)?,"title":r.get::<_,String>(6)?,"status":r.get::<_,String>(7)?,"error":r.get::<_,String>(8)?,"source_names":r.get::<_,Option<String>>(9)?.unwrap_or_default().lines().collect::<Vec<_>>()}))
         })?
         .collect::<Result<Vec<_>, _>>()?;
     Ok(Json(json!(rows)))
@@ -2709,6 +2947,82 @@ async fn session(State(a): State<Arc<App>>, AxPath(id): AxPath<i64>) -> R<Json<V
     Ok(Json(s))
 }
 
+async fn diagram_page(
+    a: &App,
+    sid: i64,
+    filename: &str,
+) -> AResult<(PathBuf, image::DynamicImage)> {
+    let pattern = regex::Regex::new(r"^source-diagram-([0-9]+)-([0-9]+)-[0-9]+\.png$")?;
+    let parts = pattern
+        .captures(filename)
+        .ok_or_else(|| anyhow!("Invalid diagram filename"))?;
+    if parts[1].parse::<i64>()? != sid {
+        bail!("Diagram belongs to another session");
+    }
+    let page = parts[2].parse::<usize>()?;
+    if page == 0 {
+        bail!("Invalid source page");
+    }
+    let (j, _, files, _, _) = load_row(a, sid)?;
+    if !files.lines().any(|f| f == filename) && !load_pending_file(a, sid, filename) {
+        bail!("Diagram is not in this session");
+    }
+    let up = a
+        .vault()
+        .await
+        .join(&j.ct)
+        .join(&j.course)
+        .join("Uploaded Notes");
+    let cached = up.join(format!("source-page-{sid}-{page}.png"));
+    let image = if cached.exists() {
+        image::open(cached)?
+    } else {
+        let pdf = files
+            .lines()
+            .find(|name| name.ends_with(".pdf"))
+            .ok_or_else(|| anyhow!("No source PDF available"))?;
+        let pages = pdf_to_pngs(&std::fs::read(up.join(pdf))?, sid as usize).await?;
+        image::load_from_memory(
+            pages
+                .get(page - 1)
+                .ok_or_else(|| anyhow!("Source page is unavailable"))?,
+        )?
+    };
+    Ok((up.join(filename), image))
+}
+
+async fn diagram_page_get(
+    State(a): State<Arc<App>>,
+    AxPath((sid, name)): AxPath<(i64, String)>,
+) -> R<Response> {
+    let (_, image) = diagram_page(&a, sid, &name).await?;
+    let mut bytes = std::io::Cursor::new(Vec::new());
+    image.write_to(&mut bytes, image::ImageFormat::Png)?;
+    Ok((
+        [
+            (axum::http::header::CONTENT_TYPE, "image/png"),
+            (axum::http::header::CACHE_CONTROL, "no-store"),
+        ],
+        bytes.into_inner(),
+    )
+        .into_response())
+}
+
+async fn diagram_crop_put(
+    State(a): State<Arc<App>>,
+    AxPath((sid, name)): AxPath<(i64, String)>,
+    Json(box_value): Json<Value>,
+) -> R<Json<Value>> {
+    let (path, image) = diagram_page(&a, sid, &name).await?;
+    let (x, y, w, h) = crop_bounds(&box_value, image.width(), image.height())?;
+    let temp = path.with_extension("crop.tmp");
+    image
+        .crop_imm(x, y, w, h)
+        .save_with_format(&temp, image::ImageFormat::Png)?;
+    std::fs::rename(temp, path)?;
+    Ok(Json(json!({"ok":true})))
+}
+
 async fn pdf_file(
     State(a): State<Arc<App>>,
     AxPath((id, nm)): AxPath<(i64, String)>,
@@ -2726,7 +3040,9 @@ async fn pdf_file(
         .join("Uploaded Notes")
         .join(&nm);
     let b = std::fs::read(p)?;
-    let ctype = if nm.ends_with(".md") {
+    let ctype = if nm.ends_with(".png") {
+        "image/png"
+    } else if nm.ends_with(".md") {
         "text/markdown; charset=utf-8"
     } else {
         "application/pdf"
@@ -3191,6 +3507,129 @@ mod tests {
         )
         .is_empty());
     }
+    #[test]
+    fn original_image_mode_excludes_redraws_and_requires_crop_verification() {
+        let image = "![Original diagram](../Uploaded%20Notes/source-diagram-42-1-0.png)";
+        let body=format!("Notes\n{image}\n\n```svg\n<svg><text>Invented</text></svg>\n```\n\n```mermaid\nA-->B\n```\n\n![Invented](fake.png)\n{image}\n<svg><text>raw redraw</text></svg>");
+        let cleaned = original_images_only(&body, image);
+        assert_eq!(cleaned.matches(image).count(), 1);
+        assert!(!cleaned.contains("Invented"));
+        assert!(!cleaned.contains("A-->B"));
+        assert!(!cleaned.contains("raw redraw"));
+        assert!(original_images_only("Notes", image).contains(image));
+        assert!(verified_diagram_crop(
+            r#"{"contains_diagram":true,"complete":true,"matches_source":true}"#
+        ));
+        assert!(!verified_diagram_crop(
+            r#"{"contains_diagram":false,"complete":true,"matches_source":true}"#
+        ));
+        assert!(!verified_diagram_crop(r#"{"contains_diagram":true}"#));
+        assert!(!verified_diagram_crop("invalid reply"));
+    }
+
+    #[test]
+    fn original_diagram_crops_preserve_pixels_and_image_references() {
+        let dir = std::env::temp_dir().join(format!("studyhub-crops-{}", ts()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let image = image::RgbImage::from_fn(100, 200, |x, y| image::Rgb([x as u8, y as u8, 7]));
+        let mut bytes = std::io::Cursor::new(Vec::new());
+        image.write_to(&mut bytes, image::ImageFormat::Png).unwrap();
+        let mut files = vec![];
+        let source = "Notes\n\n```crop\n{\"box\":[100,200,600,800]}\n```";
+        let text = extract_diagram_crops(source, bytes.get_ref(), &dir, 42, 1, &mut files).unwrap();
+        let crop = image::open(dir.join("source-diagram-42-1-0.png"))
+            .unwrap()
+            .to_rgb8();
+        assert_eq!(crop.dimensions(), (50, 120));
+        assert_eq!(crop.get_pixel(0, 0), image.get_pixel(10, 40));
+        assert!(text.contains("![Original diagram](../Uploaded%20Notes/source-diagram-42-1-0.png)"));
+        assert!(preserve_source_drawings("## Notes", &text).contains("source-diagram-42-1-0.png"));
+        assert!(crop_bounds(&json!({"box":[0,0,1001,500]}), 100, 200).is_err());
+        let fallback =
+            extract_diagram_crops("```crop\n{}\n```", bytes.get_ref(), &dir, 42, 2, &mut files)
+                .unwrap();
+        assert!(fallback.contains("source-diagram-42-2-0.png"));
+        assert_eq!(
+            image::open(dir.join("source-diagram-42-2-0.png"))
+                .unwrap()
+                .width(),
+            100
+        );
+        for (page, input) in [
+            "```json\n{\"box\":[590,240,800,480]}\n```",
+            "```\n{\"box\":[590,240,800,480]}\n```",
+            "{\"box\":[590,240,800,480]}",
+            "[{\"box\":[590,240,800,480]}]",
+        ]
+        .iter()
+        .enumerate()
+        {
+            let rendered =
+                extract_diagram_crops(input, bytes.get_ref(), &dir, 42, page + 3, &mut files)
+                    .unwrap();
+            assert!(rendered.starts_with("![Original diagram]"));
+            assert!(!rendered.contains("box"));
+            assert!(!rendered.contains("```"));
+            let crop =
+                image::open(dir.join(format!("source-diagram-42-{}-0.png", page + 3))).unwrap();
+            assert_eq!((crop.width(), crop.height()), (21, 48));
+        }
+        let settings: Settings = serde_json::from_str("{}").unwrap();
+        assert!(!settings.original_diagram_images);
+        let settings: Settings =
+            serde_json::from_value(json!({"original_diagram_images":true})).unwrap();
+        assert!(settings.original_diagram_images);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn note_writer_cannot_change_source_drawing_labels_or_add_vectors() {
+        let source = "```svg\n<svg><text>F(N)</text><line x1='2' y1='3' x2='4' y2='1'/></svg>\n```";
+        let changed = "## Ramp\n\n```svg\n<svg><text>mg</text></svg>\n```\n\n```diagram\n{}\n```";
+        let preserved = preserve_source_drawings(changed, source);
+        assert!(preserved.contains(source));
+        assert!(!preserved.contains("mg"));
+        assert!(!preserved.contains("```diagram"));
+        assert!(preserve_source_drawings("## Ramp", source).contains(source));
+        assert_eq!(
+            preserve_source_drawings("## Ramp", "no drawings"),
+            "## Ramp"
+        );
+    }
+
+    #[test]
+    fn svg_namespace_is_not_an_internet_source() {
+        let body = r#"```svg
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="M0 90 L90 0 L90 90 Z"/></svg>
+```"#;
+        let draft = json!({"title":"Ramp","body":body,"links":[]});
+        assert!(check(&draft, &[]).is_empty());
+        let plan = json!({"big_ideas":[{"name":"Ramp","evidence":body,"connects_to":"","how":""}]});
+        assert!(plan_check(&plan, &[]).is_empty());
+        assert!(contains_external_url(&json!(format!(
+            "{body} https://example.com"
+        ))));
+        assert!(contains_external_url(&json!("http://www.w3.org/2000/svg")));
+        assert!(contains_external_url(&json!(
+            "<svg xmlns='https://example.com'/>"
+        )));
+    }
+
+    #[test]
+    fn json_reply_parser_handles_reasoning_and_trailing_objects() {
+        assert_eq!(
+            parse_json(
+                r#"<think>{reasoning}</think>```json
+{"title":"Ramp","body":"<svg xmlns='http://www.w3.org/2000/svg'/>"}
+``` trailing {}"#
+            )
+            .unwrap()["title"],
+            "Ramp"
+        );
+        assert!(parse_json(r#"{"body":"unescaped "quote", "nested":{"title":"wrong"}}"#).is_err());
+        assert!(parse_json(r#"{"body":"truncated"#).is_err());
+    }
+
     #[test]
     fn validates_author_output_without_an_ai_reviewer() {
         let valid = json!({"title":"Momentum", "body":"## Momentum\nImpulse changes momentum.\n```mermaid\nflowchart LR\nImpulse --> Momentum\n```", "links":[]});

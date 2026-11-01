@@ -106,13 +106,57 @@ const render=(md,sid=0,nolink=false)=>{
 };
 let diagramQueue=Promise.resolve(),diagramId=0;
 
+// Geometry is calculated here rather than delegated to generated SVG coordinates.
+function inclineDiagram(source){
+ const d=JSON.parse(source),angle=d.angle;
+ if(d.type!=='inclined_plane'||!Number.isFinite(angle)||angle<=0||angle>=75)throw Error('Invalid incline angle');
+ const esc=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ const t=angle*Math.PI/180,ux=Math.cos(t),uy=-Math.sin(t),nx=-Math.sin(t),ny=-Math.cos(t);
+ const left=70,base=330,width=330,height=width*Math.tan(t),scale=Math.min(1,240/height),w=width*scale,h=height*scale;
+ const px=left+w*.53,py=base-h*.53,cx=px+nx*17,cy=py+ny*17;
+ let svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 440" role="img" aria-label="Inclined plane"><title>Inclined plane, ${angle} degrees</title><rect width="520" height="440" fill="#161b22"/><path d="M${left} ${base} L${left+w} ${base-h} L${left+w} ${base} Z" fill="#303b47" stroke="#c9d1d9" stroke-width="2"/><rect x="${px-25}" y="${py-34}" width="50" height="34" transform="rotate(${-angle} ${px} ${py})" fill="#579de0" stroke="#e6edf3"/><text x="${left+48}" y="${base-9}" fill="#e6edf3">${angle}°</text><text x="260" y="405" fill="#e6edf3" text-anchor="middle">${esc(d.label||'Block on ramp')} (not to scale)</text>`;
+ const vectors={gravity:[0,1,'mg','#ff8585'],normal:[nx,ny,'F_N','#79dc99'],friction_up:[ux,uy,'f_s','#ffc46b'],friction_down:[-ux,-uy,'f','#ffc46b']};
+ if(!Array.isArray(d.forces)||d.forces.length>4||new Set(d.forces).size!==d.forces.length)throw Error('Invalid forces');
+ for(const force of d.forces){
+  if(!Object.hasOwn(vectors,force))throw Error('Unknown force');
+  const [dx,dy,label,color]=vectors[force],ex=cx+dx*95,ey=cy+dy*95;
+  const ax=ex-dx*12,ay=ey-dy*12;
+  svg+=`<line x1="${cx}" y1="${cy}" x2="${ex}" y2="${ey}" stroke="${color}" stroke-width="3"/><polygon points="${ex},${ey} ${ax-dy*5},${ay+dx*5} ${ax+dy*5},${ay-dx*5}" fill="${color}"/><text x="${ex+10}" y="${ey-8}" fill="${color}">${label}</text>`;
+ }
+ return svg+'</svg>';
+}
+
 function Md({md,sid=0,nolink=false,onNote,onSource}){
  const ref=React.useRef(null);
  const html=React.useMemo(()=>render(md||'',sid,nolink),[md,sid,nolink]);
  useEffect(()=>{
   const el=ref.current;if(!el)return;let cancelled=false;
   el.querySelectorAll('h1,h2,h3,h4,h5,h6').forEach(h=>{h.id=h.textContent});
+  el.querySelectorAll('img').forEach(img=>{
+   const match=/^\.\.\/Uploaded(?:%20| )Notes\/(source-diagram-(\d+)-\d+-\d+\.png)$/.exec(img.getAttribute('src')||'');
+   if(match){img.src=appUrl(`/api/notes/${match[2]}/pdf/${match[1]}`);img.style.maxWidth='100%';img.style.height='auto';}
+  });
   el.querySelectorAll('pre > code').forEach(code=>{
+   if(code.className.toLowerCase().split(/\s+/).includes('language-diagram')){
+    try{
+     const drawing=document.createElement('div');drawing.className='source-diagram';
+     drawing.innerHTML=DOMPurify.sanitize(inclineDiagram(code.textContent),{USE_PROFILES:{svg:true}});
+     drawing.style.maxWidth='640px';code.parentElement.replaceWith(drawing);
+    }catch(error){const warning=document.createElement('div');warning.className='diagram-error';warning.textContent='Diagram could not render: '+error.message;code.parentElement.before(warning)}
+    return;
+   }
+   if(code.className.toLowerCase().split(/\s+/).includes('language-svg')){
+    const drawing=document.createElement('div');drawing.className='source-diagram';
+    drawing.innerHTML=DOMPurify.sanitize(code.textContent,{USE_PROFILES:{svg:true},FORBID_TAGS:['foreignObject','image','use','a','style','animate','animateTransform','set'],FORBID_ATTR:['href','xlink:href','style']});
+    const svg=drawing.querySelector('svg');
+    if(svg){
+     svg.style.width='100%';svg.style.maxWidth='640px';svg.style.height='auto';
+     code.parentElement.replaceWith(drawing);
+    }else{
+     const warning=document.createElement('div');warning.className='diagram-error';warning.textContent='Diagram could not render: invalid SVG';code.parentElement.before(warning);
+    }
+    return;
+   }
    if(code.className.toLowerCase().split(/\s+/).includes('language-graph')){
     try{
      const plot=document.createElement('div');plot.className='coordinate-graph';
@@ -276,6 +320,8 @@ function ProviderSettings({profiles,settings,reload,onTutorial}){
  <Button variant="contained" sx={{alignSelf:'flex-start'}} disabled={task.busy} onClick={()=>task.run(async()=>{setNoteConfig(await send('/api/notes/config',noteConfig,'PUT'));setSaved('Note import models saved. Retry failed uploads to use these models.')})}>Save Note Import Models</Button></Stack></Paper>}
  <Paper variant="outlined" sx={{p:{xs:2,sm:3}}}><Stack spacing={2.5}><Box><Typography variant="h6" data-tour="vault-settings">Obsidian Vault & Note Style</Typography><Typography variant="body2" color="text.secondary" sx={{mt:.5}}>Choose where notes are saved and how they are written.</Typography></Box>{noteConfig?<>
  <TextField fullWidth label="Obsidian Vault Location" value={noteConfig.vault_path} onChange={e=>setNoteConfig({...noteConfig,vault_path:e.target.value})} placeholder="/path/to/StudyHub_Vault" helperText="Folder on the computer running NoteSorter. Existing notes stay in their current location." InputProps={{endAdornment:<InputAdornment position="end"><Button size="small" aria-label="Browse Main System Folders" onClick={()=>setFolderPicker(true)} sx={{minWidth:0,px:1,py:.5,minHeight:28}}>Browse</Button></InputAdornment>}}/>
+ <FormControlLabel control={<Switch checked={noteConfig.original_diagram_images===true} onChange={e=>setNoteConfig({...noteConfig,original_diagram_images:e.target.checked})}/>} label="Use original diagram images"/>
+ <Typography variant="caption" color="text.secondary">Crop diagrams from uploaded pages instead of AI redraws. Applies to new imports.</Typography>
  <TextField select fullWidth label="Note Style" value={noteConfig.note_style} onChange={e=>setNoteConfig({...noteConfig,note_style:e.target.value})}><MenuItem value="bullet_points">Bullet Points</MenuItem><MenuItem value="text_chunks">Text Chunks</MenuItem><MenuItem value="hybrid">Combined · Light Text and Bullets</MenuItem></TextField>
  <Button variant="contained" sx={{alignSelf:'flex-start'}} disabled={task.busy} onClick={()=>task.run(async()=>{await send('/api/notes/config',noteConfig,'PUT');tourAction('vault-saved')})}>Save Vault & Note Style</Button></>:<Button variant="outlined" sx={{alignSelf:'flex-start'}} onClick={()=>task.run(async()=>setNoteConfig(await api('/api/notes/config')))}>Load Vault Settings</Button>}</Stack></Paper>
  <HostFolderPicker open={folderPicker} initialPath={noteConfig?.vault_path} onClose={()=>setFolderPicker(false)} onChoose={path=>setNoteConfig({...noteConfig,vault_path:path})}/>

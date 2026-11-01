@@ -40,6 +40,7 @@ Source: [src/lib.rs](../src/lib.rs). Handlers in child modules are referenced by
 | GET, PUT, POST | `/notes/api/review/session/:id/human` | `get(human_review) .put(save_human_review) .post(complete_human_review)` |
 | GET | `/notes/api/review/session/:id/source/:source` | `get(original_source)` |
 | GET | `/notes/api/review/session/:id/pdf/:name` | `get(pdf_file)` |
+| GET, PUT | `/notes/api/review/session/:id/diagram/:name` | `get(diagram_page_get).put(diagram_crop_put)` |
 | GET | `/notes/api/review/session/:id/question` | `get(question)` |
 | GET | `/notes/api/review/session/:id/page` | `get(page_img)` |
 | POST | `/notes/api/review/session/:id/answer` | `post(answer)` |

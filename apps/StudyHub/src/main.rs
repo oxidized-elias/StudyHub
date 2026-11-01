@@ -214,12 +214,13 @@ mod tests {
             app.clone(),
             "PUT",
             "/learn/api/notes/config",
-            json!({"vault_path":temp.join("vault"),"note_style":"hybrid", "provider":"ollama", "ollama_url":"http://model-server:11434", "models":{"ollama":{"ai1":"writer:4b","vision":"reader:4b"}}, "api_key":"private-notes-key"}),
+            json!({"vault_path":temp.join("vault"),"note_style":"hybrid", "original_diagram_images":true, "provider":"ollama", "ollama_url":"http://model-server:11434", "models":{"ollama":{"ai1":"writer:4b","vision":"reader:4b"}}, "api_key":"private-notes-key"}),
         )
         .await;
         assert!(saved.is_object());
         let config = json_request(app.clone(), "GET", "/learn/api/notes/config", json!({})).await;
         assert_eq!(config["note_style"], "hybrid");
+        assert_eq!(config["original_diagram_images"], true);
         assert_eq!(config["models"]["ollama"]["vision"], "reader:4b");
         assert_eq!(config["models"]["ollama"]["ai1"], "writer:4b");
         assert_eq!(config["ollama_url"], "http://model-server:11434");

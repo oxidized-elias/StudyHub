@@ -220,6 +220,8 @@ function Settings({s,setS,status}){
  const setM=(k,v)=>setS({...s,models:{...s.models,[s.provider]:{...m,[k]:v}}});
  return <Box sx={{width:{xs:'100vw',sm:420},maxWidth:'100vw',boxSizing:'border-box',p:3}}><Typography variant="h6" gutterBottom>Settings</Typography>
  <Stack spacing={2}>
+  <FormControlLabel control={<Switch checked={s.original_diagram_images===true} onChange={e=>setS({...s,original_diagram_images:e.target.checked})}/>} label="Use original diagram images"/>
+  <Typography variant="caption">Crop diagrams from uploaded pages instead of having AI redraw them. Applies to new imports.</Typography>
   <TextField select label="Note Style" value={s.note_style||'bullet_points'} onChange={e=>setS({...s,note_style:e.target.value})}><MenuItem value="bullet_points">Bullet points</MenuItem><MenuItem value="text_chunks">Text chunks</MenuItem><MenuItem value="hybrid">Combined · light text and bullets</MenuItem></TextField>
   <TextField label="Obsidian vault folder" value={s.vault_path} onChange={e=>setS({...s,vault_path:e.target.value})} helperText="Full path. Created when the first note is saved. Open this folder in Obsidian."/>
   <TextField label="Learning app URL" value={s.learning_url||''} onChange={e=>setS({...s,learning_url:e.target.value})}/>
@@ -256,27 +258,42 @@ function Settings({s,setS,status}){
  </Stack></Box>;
 }
 
+function FailedImports({sessions,refresh,disabled=false}){
+ const [retried,setRetried]=useState([]),[pending,setPending]=useState(null),[error,setError]=useState('');
+ const rows=sessions.filter(r=>r.status==='failed'||retried.includes(r.id));
+ const name=r=>(r.source_names||[]).join(', ')||r.lesson||r.title||`Import ${r.id}`;
+ const retry=async r=>{setPending(r.id);setError('');try{await api(`/api/review/session/${r.id}/retry`,{method:'POST'});setRetried(old=>old.includes(r.id)?old:[...old,r.id]);await refresh()}catch(e){setError(`${name(r)}: ${e.message}`)}finally{setPending(null)}};
+ const download=()=>{
+  const failed=rows.filter(r=>r.status==='failed');
+  const report=['# Failed imports',`Generated: ${new Date().toLocaleString()}`,`Failed: ${failed.length}`,...failed.map(r=>`## ${name(r)}\nSession: ${r.id}\n${r.class_type} / ${r.course}\n\n${r.error||'No error details were recorded.'}`)].join('\n\n');
+  const url=URL.createObjectURL(new Blob([report],{type:'text/markdown;charset=utf-8'}));const link=document.createElement('a');link.href=url;link.download='failed-imports.md';link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
+ };
+ if(!rows.length)return null;
+ return <Paper variant="outlined" sx={{p:2}}><Stack spacing={1.5}><Stack direction="row" alignItems="center" justifyContent="space-between"><Typography variant="h6">Failed imports ({rows.filter(r=>r.status==='failed').length})</Typography><Button onClick={download}>Download report</Button></Stack>{error&&<Notice severity="error">{error}</Notice>}{rows.map(r=><Box key={r.id} sx={{borderTop:'1px solid',borderColor:'divider',pt:1.5}}><Stack direction="row" alignItems="center" spacing={2}><Typography sx={{flex:1,overflowWrap:'anywhere'}}>{name(r)}</Typography><Chip size="small" label={pending===r.id?'Starting retry':r.status==='failed'?'Failed':r.status==='done'?'Saved':r.status==='review'?'Needs review':r.status==='waiting'?'Needs input':'Retrying'}/><Button disabled={disabled||pending!==null||r.status!=='failed'} onClick={()=>retry(r)}>Retry</Button></Stack><Typography variant="caption" color="text.secondary">{r.class_type} / {r.course} · Session {r.id}</Typography>{r.status==='failed'&&<Typography variant="body2" color="error" sx={{whiteSpace:'pre-wrap',overflowWrap:'anywhere',mt:.5}}>{r.error||'No error details were recorded.'}</Typography>}</Box>)}</Stack></Paper>;
+}
+
 function Upload({ver,refresh,sessions}){
  const bulkStop=React.useRef(false);
  const [bulk,setBulk]=useState(false),[queue,setQueue]=useState(null),[bulkResults,setBulkResults]=useState([]);
  // Send only one file at a time so a large selection never becomes one huge request.
- const bulkGo=async()=>{
-  const pending=[...files];bulkStop.current=false;setBusy(true);setRes(null);setBulkResults([]);
+ const bulkGo=()=>runBulk(files);
+ const runBulk=async(selected,keepResults=false)=>{
+  const pending=[...selected];bulkStop.current=false;setBusy(true);setRes(null);if(!keepResults)setBulkResults([]);
   try{
    for(let i=0;i<pending.length;i++){
     if(bulkStop.current)break;
-    const file=pending[i];setQueue({index:i+1,total:pending.length,name:file.name});
+    const file=pending[i];let submittedId=null;setQueue({index:i+1,total:pending.length,name:file.name});
     try{
      const body=new FormData();body.append('file',file);body.append('unknown','true');if(f.course_name.trim())body.append('course_name',f.course_name.trim());if(f.class_type.trim())body.append('class_type',f.class_type.trim());if(skipHuman)body.append('skip_human','true');if(noteStyle)body.append('note_style',noteStyle);
-     const {session_id}=await api('/api/submit',{method:'POST',body});
+     const {session_id}=await api('/api/submit',{method:'POST',body});submittedId=session_id;
      setActive({id:session_id,append:false});
      let row;
      do{
       await new Promise(resolve=>setTimeout(resolve,2000));
       row=await api('/api/review/session/'+session_id);await refresh();
      }while(['running','waiting','review'].includes(row.status));
-     setBulkResults(p=>[...p,{name:file.name,ok:row.status==='done',message:row.error||row.title}]);
-    }catch(e){setRes({ok:false,msg:e.message});break}
+     setBulkResults(p=>[...p.filter(r=>r.file!==file),{name:file.name,session_id,ok:row.status==='done',message:row.error||row.title}]);
+    }catch(e){setBulkResults(p=>[...p.filter(r=>r.file!==file),{name:file.name,file:submittedId?null:file,session_id:submittedId,ok:false,message:e.message}]);setRes({ok:false,msg:e.message});break}
     setFiles(p=>p.filter(x=>x!==file));
    }
   }finally{setQueue(null);setBusy(false);await refresh()}
@@ -315,7 +332,8 @@ function Upload({ver,refresh,sessions}){
   {bulk&&skipHuman&&<Typography variant="body2" color="text.secondary">Save generated notes automatically and skip clarification questions. Unreadable content stays marked illegible. Automatic saves do not create human correction lessons.</Typography>}
   {bulk&&<Notice severity="info">Each file becomes its own note; each PDF keeps all its pages together. Set Class and Course below, or leave either blank for the AI to infer. Lesson and unit name are inferred per file. Unit numbers stay optional. Files are uploaded and processed one at a time (64 MiB per file). Keep this tab open until the queue finishes.</Notice>}
   {queue&&<Notice severity="info">Processing {queue.index} of {queue.total}: {queue.name}</Notice>}
-  {bulkResults.length>0&&<Box sx={{maxHeight:240,overflow:'auto'}}>{bulkResults.map((r,i)=><Typography key={i} color={r.ok?'primary':'error'}>{r.name}: {r.message||'Failed'}</Typography>)}</Box>}
+  <FailedImports sessions={sessions} refresh={refresh} disabled={running}/>
+  {bulkResults.length>0&&<Box sx={{maxHeight:240,overflow:'auto'}}>{bulkResults.map((r,i)=><Typography key={i} color={r.ok?'primary':'error'}>{r.name}: {r.message||'Failed'}{r.file&&<Button size="small" disabled={running} onClick={()=>runBulk([r.file],true)}>Retry upload</Button>}</Typography>)}</Box>}
   <Autocomplete disabled={bulk||running} size="small" options={done} value={prev} getOptionLabel={label} onChange={(_,v)=>loadPrev(v)}
    renderInput={p=><TextField {...p} label="Load previous context (optional)" helperText="Fills the form from an earlier note so you can keep adding to that course and unit"/>}/>
   {prev&&!bulk&&<FormControlLabel control={<Switch checked={append} onChange={e=>setAppend(e.target.checked)}/>} label={`Add these pages to "${prev.title}" instead of making a new note`}/>}
@@ -350,8 +368,37 @@ function Upload({ver,refresh,sessions}){
 }
 
 // Renders markdown (Obsidian flavour) and mermaid diagrams. Invalid diagrams fall back to showing their source.
+// Geometry is calculated here rather than delegated to generated SVG coordinates.
+function inclineDiagram(source){
+ const d=JSON.parse(source),angle=d.angle;
+ if(d.type!=='inclined_plane'||!Number.isFinite(angle)||angle<=0||angle>=75)throw Error('Invalid incline angle');
+ const esc=value=>String(value).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ const t=angle*Math.PI/180,ux=Math.cos(t),uy=-Math.sin(t),nx=-Math.sin(t),ny=-Math.cos(t);
+ const left=70,base=330,width=330,height=width*Math.tan(t),scale=Math.min(1,240/height),w=width*scale,h=height*scale;
+ const px=left+w*.53,py=base-h*.53,cx=px+nx*17,cy=py+ny*17;
+ let svg=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 520 440" role="img" aria-label="Inclined plane"><title>Inclined plane, ${angle} degrees</title><rect width="520" height="440" fill="#161b22"/><path d="M${left} ${base} L${left+w} ${base-h} L${left+w} ${base} Z" fill="#303b47" stroke="#c9d1d9" stroke-width="2"/><rect x="${px-25}" y="${py-34}" width="50" height="34" transform="rotate(${-angle} ${px} ${py})" fill="#579de0" stroke="#e6edf3"/><text x="${left+48}" y="${base-9}" fill="#e6edf3">${angle}°</text><text x="260" y="405" fill="#e6edf3" text-anchor="middle">${esc(d.label||'Block on ramp')} (not to scale)</text>`;
+ const vectors={gravity:[0,1,'mg','#ff8585'],normal:[nx,ny,'F_N','#79dc99'],friction_up:[ux,uy,'f_s','#ffc46b'],friction_down:[-ux,-uy,'f','#ffc46b']};
+ if(!Array.isArray(d.forces)||d.forces.length>4||new Set(d.forces).size!==d.forces.length)throw Error('Invalid forces');
+ for(const force of d.forces){
+  if(!Object.hasOwn(vectors,force))throw Error('Unknown force');
+  const [dx,dy,label,color]=vectors[force],ex=cx+dx*95,ey=cy+dy*95;
+  const ax=ex-dx*12,ay=ey-dy*12;
+  svg+=`<line x1="${cx}" y1="${cy}" x2="${ex}" y2="${ey}" stroke="${color}" stroke-width="3"/><polygon points="${ex},${ey} ${ax-dy*5},${ay+dx*5} ${ax+dy*5},${ay-dx*5}" fill="${color}"/><text x="${ex+10}" y="${ey-8}" fill="${color}">${label}</text>`;
+ }
+ return svg+'</svg>';
+}
+
+function DiagramCropEditor({target,onClose}){
+ const [start,setStart]=useState(null),[end,setEnd]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false),[loaded,setLoaded]=useState(false);
+ const point=e=>{const r=e.currentTarget.getBoundingClientRect();return [Math.max(0,Math.min(1000,(e.clientX-r.left)/r.width*1000)),Math.max(0,Math.min(1000,(e.clientY-r.top)/r.height*1000))]};
+ const box=start&&end?[Math.min(start[0],end[0]),Math.min(start[1],end[1]),Math.max(start[0],end[0]),Math.max(start[1],end[1])]:null;
+ const save=async()=>{setBusy(true);setError('');try{await api(`/api/review/session/${target.sid}/diagram/${target.name}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({box})});target.img.src=appUrl(`/api/review/session/${target.sid}/pdf/${target.name}`)+'?v='+Date.now();onClose()}catch(e){setError(e.message)}finally{setBusy(false)}};
+ return <Dialog open onClose={busy?undefined:onClose} fullWidth maxWidth="md"><DialogTitle>Choose the diagram area</DialogTitle><DialogContent dividers><Typography paragraph>Drag a rectangle around the complete diagram, including every label and arrow.</Typography>{error&&<Notice severity="error">{error}</Notice>}<Box sx={{position:'relative',touchAction:'none',cursor:'crosshair',userSelect:'none'}} onPointerDown={e=>{if(!loaded||busy)return;e.currentTarget.setPointerCapture(e.pointerId);const p=point(e);setStart(p);setEnd(p)}} onPointerMove={e=>{if(e.buttons===1&&start)setEnd(point(e))}} onPointerUp={e=>{if(start&&!busy)setEnd(point(e))}}><Box component="img" src={appUrl(`/api/review/session/${target.sid}/diagram/${target.name}`)} alt="Full original page" onLoad={()=>setLoaded(true)} onError={()=>setError('Could not load the original page.')} sx={{display:'block',width:'100%',pointerEvents:'none'}}/>{box&&<Box sx={{position:'absolute',left:box[0]/10+'%',top:box[1]/10+'%',width:(box[2]-box[0])/10+'%',height:(box[3]-box[1])/10+'%',border:'2px solid #55aaff',bgcolor:'#55aaff22',pointerEvents:'none'}}/>}</Box></DialogContent><DialogActions><Button disabled={busy} onClick={onClose}>Cancel</Button><Button disabled={!loaded||busy} onClick={()=>{setStart([0,0]);setEnd([1000,1000])}}>Full page</Button><Button variant="contained" disabled={busy||!box||box[2]-box[0]<1||box[3]-box[1]<1} onClick={save}>Save crop</Button></DialogActions></Dialog>;
+}
+
 function Md({md,sid=0,nolink=false,onNote,highlightHeading='',highlightAll=false,documentPath=''}){
  const ref=React.useRef(null);
+ const [cropTarget,setCropTarget]=React.useState(null);
  const html=React.useMemo(()=>render(md||'',sid,nolink),[md,sid,nolink]);
  useEffect(()=>{
   const el=ref.current;if(!el)return;let cancelled=false;
@@ -367,7 +414,33 @@ function Md({md,sid=0,nolink=false,onNote,highlightHeading='',highlightAll=false
   });
   if(target&&typeof target.scrollIntoView==='function')target.scrollIntoView({block:'center',behavior:'smooth'});
 
+  el.querySelectorAll('img').forEach(img=>{
+   const match=/^\.\.\/Uploaded(?:%20| )Notes\/(source-diagram-(\d+)-\d+-\d+\.png)$/.exec(img.getAttribute('src')||'');
+   if(match){img.src=appUrl(`/api/review/session/${match[2]}/pdf/${match[1]}`);img.style.maxWidth='100%';img.style.height='auto';
+    if(typeof img.after==='function'){const button=document.createElement('button');button.type='button';button.textContent='Adjust diagram crop';button.style.display='block';button.onclick=()=>setCropTarget({sid:match[2],name:match[1],img});img.after(button);}
+   }
+  });
   el.querySelectorAll('pre > code').forEach(code=>{
+   if(code.className.toLowerCase().split(/\s+/).includes('language-diagram')){
+    try{
+     const drawing=document.createElement('div');drawing.className='source-diagram';
+     drawing.innerHTML=DOMPurify.sanitize(inclineDiagram(code.textContent),{USE_PROFILES:{svg:true}});
+     drawing.style.maxWidth='640px';code.parentElement.replaceWith(drawing);
+    }catch(error){const warning=document.createElement('div');warning.className='diagram-error';warning.textContent='Diagram could not render: '+error.message;code.parentElement.before(warning)}
+    return;
+   }
+   if(code.className.toLowerCase().split(/\s+/).includes('language-svg')){
+    const drawing=document.createElement('div');drawing.className='source-diagram';
+    drawing.innerHTML=DOMPurify.sanitize(code.textContent,{USE_PROFILES:{svg:true},FORBID_TAGS:['foreignObject','image','use','a','style','animate','animateTransform','set'],FORBID_ATTR:['href','xlink:href','style']});
+    const svg=drawing.querySelector('svg');
+    if(svg){
+     svg.style.width='100%';svg.style.maxWidth='640px';svg.style.height='auto';
+     code.parentElement.replaceWith(drawing);
+    }else{
+     const warning=document.createElement('div');warning.className='diagram-error';warning.textContent='Diagram could not render: invalid SVG';code.parentElement.before(warning);
+    }
+    return;
+   }
    if(code.className.toLowerCase().split(/\s+/).includes('language-graph')){
     try{
      const plot=document.createElement('div');plot.className='coordinate-graph';
@@ -409,7 +482,7 @@ function Md({md,sid=0,nolink=false,onNote,highlightHeading='',highlightAll=false
   const heading=a.dataset.heading||(a.getAttribute('href')?.startsWith('#')?decodeURIComponent(a.getAttribute('href').slice(1)):'');
   if(heading){const target=Array.from(ref.current.querySelectorAll('[id]')).find(h=>h.id===heading||h.id.toLowerCase().replace(/\s+/g,'-')===heading);if(target){e.preventDefault();target.scrollIntoView({block:'start',behavior:'smooth'})}}
  };
- return <Box ref={ref} onClick={click} sx={mdSx} dangerouslySetInnerHTML={{__html:html}}/>;
+ return <><Box ref={ref} onClick={click} sx={mdSx} dangerouslySetInnerHTML={{__html:html}}/>{cropTarget&&<DiagramCropEditor key={cropTarget.name} target={cropTarget} onClose={()=>setCropTarget(null)}/>}</>;
 }
 
 // AI outputs are JSON; show them as readable markdown (with a Raw toggle)

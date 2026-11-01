@@ -1,0 +1,21 @@
+const fs=require('fs'),vm=require('vm'),assert=require('node:assert/strict');
+const ts=require(process.env.TYPESCRIPT_RUNTIME||'typescript');
+const html=fs.readFileSync('web/index.html','utf8');
+const source=html.slice(html.indexOf('function FailedImports('),html.indexOf('function Upload('));
+const compiled=ts.transpileModule(source,{compilerOptions:{jsx:ts.JsxEmit.React,target:ts.ScriptTarget.ES2020}}).outputText;
+let state=[],cursor=0,requests=[],refreshed=0,reject=false;
+const context={React:{createElement:(type,props,...children)=>({type,props:props||{},children})},useState:initial=>{const id=cursor++;if(state[id]===undefined)state[id]=initial;return [state[id],value=>state[id]=typeof value==='function'?value(state[id]):value]},api:async(url,opts)=>{requests.push([url,opts]);if(reject)throw Error('Server busy')},...Object.fromEntries(['Paper','Stack','Typography','Button','Notice','Box','Chip'].map(n=>[n,n]))};
+vm.createContext(context);vm.runInContext(compiled,context);
+const rows=[{id:42,status:'failed',source_names:['Book (14).pdf'],error:'Invalid JSON',class_type:'Physics',course:'AP Physics 1'},{id:43,status:'done',source_names:['Success.pdf']}];
+const render=disabled=>{cursor=0;return context.FailedImports({sessions:rows,refresh:async()=>{refreshed++},disabled})};
+const nodes=t=>!t||typeof t!=='object'?[]:[t,...(t.children||[]).flat(Infinity).flatMap(nodes)];
+const text=t=>nodes(t).flatMap(n=>n.children||[]).filter(x=>typeof x==='string').join(' ');
+(async()=>{
+ let tree=render(false);assert.match(text(tree),/Book \(14\).pdf/);assert.match(text(tree),/Invalid JSON/);assert.doesNotMatch(text(tree),/Success.pdf/);
+ const retry=nodes(tree).find(n=>n.type==='Button'&&n.children.includes('Retry'));await retry.props.onClick();
+ assert.equal(requests[0][0],'/api/review/session/42/retry');assert.equal(requests[0][1].method,'POST');assert.equal(refreshed,1);
+ rows[0].status='running';tree=render(false);assert(nodes(tree).some(n=>n.type==='Chip'&&n.props.label==='Retrying'));assert(nodes(tree).find(n=>n.type==='Button'&&n.children.includes('Retry')).props.disabled);
+ rows[0].status='failed';reject=true;await nodes(render(false)).find(n=>n.type==='Button'&&n.children.includes('Retry')).props.onClick();assert.match(text(render(false)),/Server busy/);
+ assert(nodes(render(true)).find(n=>n.type==='Button'&&n.children.includes('Retry')).props.disabled);
+ console.log('PASS: persistent failed import report, filenames, per-session retries, progress, errors and duplicate retry protection.');
+})().catch(e=>{console.error(e);process.exitCode=1});

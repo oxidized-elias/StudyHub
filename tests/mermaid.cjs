@@ -9,7 +9,7 @@ const codes=['flowchart LR\nA --> B','sequenceDiagram\nAlice->>Bob: Hello','mind
  code.parentElement={replaceWith(node){nodes.push(node)}};return code;
 });
 const root={children:[],querySelectorAll(selector){return selector==='pre > code'?codes:[]}};
-const context={React:{useRef:()=>({current:root}),useMemo:fn=>fn()},useEffect:fn=>effects.push(fn),render:md=>md,
+const context={React:{useState:()=>[null,()=>{}],useRef:()=>({current:root}),useMemo:fn=>fn()},useEffect:fn=>effects.push(fn),render:md=>md,
  document:{createElement:element,getElementById:()=>null},DOMPurify:{sanitize:svg=>svg},
  mermaid:{async render(id,text){calls.push({id,text});if(text==='invalid diagram')throw Error('Invalid syntax');return {svg:'<svg></svg>',bindFunctions(node){node.bound=true}}}},
  diagramQueue:Promise.resolve(),diagramId:0};

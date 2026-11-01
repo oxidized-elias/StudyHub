@@ -192,7 +192,7 @@ pub(super) async fn config_get(State(a): State<Arc<App>>, headers: HeaderMap) ->
     authorize(&headers)?;
     let s = a.settings.lock().await;
     Ok(Json(
-        json!({"vault_path":s.vault_path,"note_style":s.note_style,"provider":s.provider,"ollama_url":s.ollama_url,"models":s.models,"ai1_ctx":s.ai1_ctx}),
+        json!({"vault_path":s.vault_path,"note_style":s.note_style,"original_diagram_images":s.original_diagram_images,"provider":s.provider,"ollama_url":s.ollama_url,"models":s.models,"ai1_ctx":s.ai1_ctx}),
     ))
 }
 pub(super) async fn config_put(
@@ -204,6 +204,9 @@ pub(super) async fn config_put(
     let mut s = a.settings.lock().await.clone();
     if let Some(path) = v["vault_path"].as_str() {
         s.vault_path = path.trim().into();
+    }
+    if let Some(enabled) = v["original_diagram_images"].as_bool() {
+        s.original_diagram_images = enabled;
     }
     if let Some(style) = v["note_style"].as_str() {
         s.note_style = style.into();
